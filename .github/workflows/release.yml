@@ -276,6 +276,8 @@ jobs:
           auth = oss2.Auth(os.environ["ALIYUN_ACCESS_KEY_ID"], os.environ["ALIYUN_ACCESS_KEY_SECRET"])
           bucket = oss2.Bucket(auth, os.environ["OSS_ENDPOINT"], os.environ["OSS_BUCKET"])
           root = pathlib.Path("oss-upload")
+          project_prefix = os.environ.get("OSS_PROJECT_PREFIX", "").strip("/")
+          legacy_prefix = f"releases/{os.environ['TAG']}/"
 
           for file_path in root.rglob("*"):
               if not file_path.is_file():
@@ -287,4 +289,11 @@ jobs:
                   headers["Cache-Control"] = "no-cache"
               bucket.put_object_from_file(object_key, str(file_path), headers=headers)
               print(f"uploaded oss://{os.environ['OSS_BUCKET']}/{object_key}")
+
+          if project_prefix:
+              bucket.delete_object("latest.json")
+              print(f"deleted legacy oss://{os.environ['OSS_BUCKET']}/latest.json")
+              for obj in oss2.ObjectIterator(bucket, prefix=legacy_prefix):
+                  bucket.delete_object(obj.key)
+                  print(f"deleted legacy oss://{os.environ['OSS_BUCKET']}/{obj.key}")
           PY
