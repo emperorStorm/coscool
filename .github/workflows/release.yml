@@ -5,12 +5,21 @@ on:
     branches:
       - main
   workflow_dispatch:
+    inputs:
+      sync_tag:
+        description: '仅同步已有 Release 资产到 OSS，例如 v0.1.4'
+        required: false
+        type: string
+
+env:
+  OSS_PROJECT_PREFIX: coscool
 
 jobs:
   detect-version:
     runs-on: ubuntu-latest
     outputs:
       should_release: ${{ steps.version.outputs.should_release }}
+      should_sync_assets: ${{ steps.version.outputs.should_sync_assets }}
       version: ${{ steps.version.outputs.version }}
       tag: ${{ steps.version.outputs.tag }}
       release_body: ${{ steps.version.outputs.release_body }}
@@ -22,6 +31,21 @@ jobs:
         id: version
         shell: bash
         run: |
+          sync_tag="${{ github.event.inputs.sync_tag || '' }}"
+          if [[ -n "$sync_tag" ]]; then
+            if [[ "$sync_tag" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+              version="${BASH_REMATCH[1]}"
+              echo "should_release=false" >> "$GITHUB_OUTPUT"
+              echo "should_sync_assets=true" >> "$GITHUB_OUTPUT"
+              echo "version=$version" >> "$GITHUB_OUTPUT"
+              echo "tag=$sync_tag" >> "$GITHUB_OUTPUT"
+              echo "release_body=" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            printf 'Invalid sync_tag: %s\n' "$sync_tag"
+            exit 1
+          fi
+
           message="$(git log -1 --pretty=%B)"
           if [[ "$message" =~ (^|[^0-9A-Za-z])v([0-9]+\.[0-9]+\.[0-9]+)([^0-9A-Za-z]|$) ]]; then
             version="${BASH_REMATCH[2]}"
@@ -30,6 +54,7 @@ jobs:
               body="自动打包发布课思库桌面端，包含 macOS 和 Windows 安装包。"
             fi
             echo "should_release=true" >> "$GITHUB_OUTPUT"
+            echo "should_sync_assets=true" >> "$GITHUB_OUTPUT"
             echo "version=$version" >> "$GITHUB_OUTPUT"
             echo "tag=v$version" >> "$GITHUB_OUTPUT"
             {
@@ -39,6 +64,7 @@ jobs:
             } >> "$GITHUB_OUTPUT"
           else
             echo "should_release=false" >> "$GITHUB_OUTPUT"
+            echo "should_sync_assets=false" >> "$GITHUB_OUTPUT"
             echo "version=" >> "$GITHUB_OUTPUT"
             echo "tag=" >> "$GITHUB_OUTPUT"
             echo "release_body=" >> "$GITHUB_OUTPUT"
@@ -123,12 +149,14 @@ jobs:
               throw new Error('Missing GitHub variable ALIYUN_OSS_BASE_URL');
             }
             const ossBaseUrl = process.env.ALIYUN_OSS_BASE_URL.replace(/\/+$/, '');
+            const ossProjectPrefix = (process.env.OSS_PROJECT_PREFIX || '').replace(/^\/+|\/+$/g, '');
+            const updaterPath = ossProjectPrefix ? `${ossProjectPrefix}/latest.json` : 'latest.json';
             const cargo = 'tauri-desktop/src-tauri/Cargo.toml';
             const conf = 'tauri-desktop/src-tauri/tauri.conf.json';
             fs.writeFileSync(cargo, fs.readFileSync(cargo, 'utf8').replace(/^version = \".*\"/m, 'version = \"' + version + '\"'));
             const json = JSON.parse(fs.readFileSync(conf, 'utf8'));
             json.version = version;
-            json.plugins.updater.endpoints = [ossBaseUrl + '/latest.json'];
+            json.plugins.updater.endpoints = [ossBaseUrl + '/' + updaterPath];
             fs.writeFileSync(conf, JSON.stringify(json, null, 2) + '\n');
           "
         env:
@@ -158,7 +186,7 @@ jobs:
     needs:
       - detect-version
       - publish-tauri
-    if: needs.detect-version.outputs.should_release == 'true'
+    if: always() && needs.detect-version.outputs.should_sync_assets == 'true' && (needs.detect-version.outputs.should_release != 'true' || needs.publish-tauri.result == 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -180,14 +208,22 @@ jobs:
         run: |
           set -euo pipefail
           base_url="${OSS_BASE_URL%/}"
+          project_prefix="${OSS_PROJECT_PREFIX#/}"
+          project_prefix="${project_prefix%/}"
           version_dir="releases/${TAG}"
+          latest_dir="."
+          if [[ -n "$project_prefix" ]]; then
+            version_dir="${project_prefix}/${version_dir}"
+            latest_dir="$project_prefix"
+          fi
           node <<'NODE'
           const fs = require('fs');
           const path = require('path');
 
           const dir = 'release-assets';
           const baseUrl = process.env.OSS_BASE_URL.replace(/\/+$/, '');
-          const versionDir = `releases/${process.env.TAG}`;
+          const projectPrefix = (process.env.OSS_PROJECT_PREFIX || '').replace(/^\/+|\/+$/g, '');
+          const versionDir = [projectPrefix, 'releases', process.env.TAG].filter(Boolean).join('/');
           const latestPath = path.join(dir, 'latest.json');
           const latest = JSON.parse(fs.readFileSync(latestPath, 'utf8'));
 
@@ -214,8 +250,9 @@ jobs:
           fs.writeFileSync(latestPath, JSON.stringify(latest, null, 2) + '\n');
           NODE
           mkdir -p oss-upload/"$version_dir"
+          mkdir -p oss-upload/"$latest_dir"
           cp release-assets/* oss-upload/"$version_dir"/
-          cp release-assets/latest.json oss-upload/latest.json
+          cp release-assets/latest.json oss-upload/"$latest_dir"/latest.json
 
       - name: Upload updater assets to Aliyun OSS
         run: |
