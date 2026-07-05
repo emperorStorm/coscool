@@ -53,6 +53,7 @@ import { open } from '@tauri-apps/plugin-dialog'
 import type { AppSettings, UpdateCheckResult } from '../api/native'
 import {
   checkAppUpdate,
+  formatUpdateError,
   getAppSettings,
   getCurrentVersion,
   initDataLibraryDir,
@@ -133,7 +134,7 @@ async function checkUpdate() {
     })
   } catch (error) {
     updateStatus.value = '检查更新失败'
-    message.error(String(error))
+    message.error(formatUpdateError(error))
   } finally {
     checking.value = false
   }
@@ -166,7 +167,7 @@ async function installUpdate(update: NonNullable<UpdateCheckResult['update']>) {
   } catch (error) {
     installing.value = false
     updateStatus.value = downloadedBytes > 0 ? '更新安装失败' : '更新下载失败'
-    message.error(String(error))
+    message.error(formatUpdateError(error))
   }
 }
 </script>

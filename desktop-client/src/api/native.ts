@@ -3,6 +3,9 @@ import { getVersion } from '@tauri-apps/api/app'
 import { relaunch } from '@tauri-apps/plugin-process'
 import { check, type DownloadEvent, type Update } from '@tauri-apps/plugin-updater'
 
+const UPDATE_CHECK_TIMEOUT_MS = 15000
+const UPDATE_DOWNLOAD_TIMEOUT_MS = 120000
+
 export interface AppSettings {
   dataLibraryPath?: string
   currentTeacherAccount?: string
@@ -118,16 +121,27 @@ export function getCurrentVersion() {
   return getVersion()
 }
 
+export function formatUpdateError(error: unknown) {
+  const text = String(error)
+  if (text.includes('error sending request') || text.includes('timed out') || text.includes('timeout')) {
+    return '连接更新服务失败，请稍后重试或检查当前网络。'
+  }
+  return text
+}
+
 export async function checkAppUpdate(): Promise<UpdateCheckResult> {
-  const update = await check()
+  const update = await check({ timeout: UPDATE_CHECK_TIMEOUT_MS })
   return {
     currentVersion: update?.currentVersion || await getVersion(),
     update: update || undefined
   }
 }
 
-export async function installAppUpdate(update: Update, onEvent: (event: DownloadEvent) => void) {
-  await update.downloadAndInstall(onEvent)
+export async function installAppUpdate(
+  update: Update,
+  onEvent: (event: DownloadEvent) => void
+) {
+  await update.downloadAndInstall(onEvent, { timeout: UPDATE_DOWNLOAD_TIMEOUT_MS })
   await relaunch()
 }
 

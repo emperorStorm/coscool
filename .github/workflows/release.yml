@@ -62,6 +62,24 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Validate OSS config
+        shell: bash
+        run: |
+          missing=()
+          for name in ALIYUN_OSS_BASE_URL ALIYUN_OSS_BUCKET ALIYUN_OSS_ENDPOINT; do
+            if [[ -z "${!name}" ]]; then
+              missing+=("$name")
+            fi
+          done
+          if (( ${#missing[@]} > 0 )); then
+            printf 'Missing GitHub variables: %s\n' "${missing[*]}"
+            exit 1
+          fi
+        env:
+          ALIYUN_OSS_BASE_URL: ${{ vars.ALIYUN_OSS_BASE_URL }}
+          ALIYUN_OSS_BUCKET: ${{ vars.ALIYUN_OSS_BUCKET }}
+          ALIYUN_OSS_ENDPOINT: ${{ vars.ALIYUN_OSS_ENDPOINT }}
+
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
@@ -101,15 +119,21 @@ jobs:
           node -e "
             const fs = require('fs');
             const version = process.env.RELEASE_VERSION;
+            if (!process.env.ALIYUN_OSS_BASE_URL) {
+              throw new Error('Missing GitHub variable ALIYUN_OSS_BASE_URL');
+            }
+            const ossBaseUrl = process.env.ALIYUN_OSS_BASE_URL.replace(/\/+$/, '');
             const cargo = 'tauri-desktop/src-tauri/Cargo.toml';
             const conf = 'tauri-desktop/src-tauri/tauri.conf.json';
             fs.writeFileSync(cargo, fs.readFileSync(cargo, 'utf8').replace(/^version = \".*\"/m, 'version = \"' + version + '\"'));
             const json = JSON.parse(fs.readFileSync(conf, 'utf8'));
             json.version = version;
+            json.plugins.updater.endpoints = [ossBaseUrl + '/latest.json'];
             fs.writeFileSync(conf, JSON.stringify(json, null, 2) + '\n');
           "
         env:
           RELEASE_VERSION: ${{ needs.detect-version.outputs.version }}
+          ALIYUN_OSS_BASE_URL: ${{ vars.ALIYUN_OSS_BASE_URL }}
 
       - name: Build and upload release
         uses: tauri-apps/tauri-action@v1
@@ -129,3 +153,101 @@ jobs:
           uploadUpdaterSignatures: true
           updaterJsonPreferNsis: true
           args: ${{ matrix.args }}
+
+  publish-update-assets:
+    needs:
+      - detect-version
+      - publish-tauri
+    if: needs.detect-version.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      TAG: ${{ needs.detect-version.outputs.tag }}
+      OSS_BUCKET: ${{ vars.ALIYUN_OSS_BUCKET }}
+      OSS_ENDPOINT: ${{ vars.ALIYUN_OSS_ENDPOINT }}
+      OSS_BASE_URL: ${{ vars.ALIYUN_OSS_BASE_URL }}
+      ALIYUN_ACCESS_KEY_ID: ${{ secrets.ALIYUN_ACCESS_KEY_ID }}
+      ALIYUN_ACCESS_KEY_SECRET: ${{ secrets.ALIYUN_ACCESS_KEY_SECRET }}
+    steps:
+      - name: Download release assets
+        run: gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --dir release-assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Prepare OSS updater metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          base_url="${OSS_BASE_URL%/}"
+          version_dir="releases/${TAG}"
+          node <<'NODE'
+          const fs = require('fs');
+          const path = require('path');
+
+          const dir = 'release-assets';
+          const baseUrl = process.env.OSS_BASE_URL.replace(/\/+$/, '');
+          const versionDir = `releases/${process.env.TAG}`;
+          const latestPath = path.join(dir, 'latest.json');
+          const latest = JSON.parse(fs.readFileSync(latestPath, 'utf8'));
+
+          const assets = fs.readdirSync(dir);
+          const findAsset = pattern => assets.find(name => pattern.test(name));
+          const macUpdate = findAsset(/aarch64\.app\.tar\.gz$/);
+          const winUpdate = findAsset(/x64-setup\.exe$/);
+
+          if (!macUpdate || !winUpdate) {
+            throw new Error(`Missing updater assets. mac=${macUpdate || ''}, win=${winUpdate || ''}`);
+          }
+
+          for (const key of ['darwin-aarch64', 'darwin-aarch64-app']) {
+            if (latest.platforms[key]) {
+              latest.platforms[key].url = `${baseUrl}/${versionDir}/${macUpdate}`;
+            }
+          }
+          for (const key of ['windows-x86_64', 'windows-x86_64-nsis']) {
+            if (latest.platforms[key]) {
+              latest.platforms[key].url = `${baseUrl}/${versionDir}/${winUpdate}`;
+            }
+          }
+
+          fs.writeFileSync(latestPath, JSON.stringify(latest, null, 2) + '\n');
+          NODE
+          mkdir -p oss-upload/"$version_dir"
+          cp release-assets/* oss-upload/"$version_dir"/
+          cp release-assets/latest.json oss-upload/latest.json
+
+      - name: Upload updater assets to Aliyun OSS
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install oss2
+          python <<'PY'
+          import os
+          import pathlib
+          import oss2
+
+          required = [
+              "ALIYUN_ACCESS_KEY_ID",
+              "ALIYUN_ACCESS_KEY_SECRET",
+              "OSS_BUCKET",
+              "OSS_ENDPOINT",
+          ]
+          missing = [name for name in required if not os.environ.get(name)]
+          if missing:
+              raise SystemExit(f"Missing required OSS config: {', '.join(missing)}")
+
+          auth = oss2.Auth(os.environ["ALIYUN_ACCESS_KEY_ID"], os.environ["ALIYUN_ACCESS_KEY_SECRET"])
+          bucket = oss2.Bucket(auth, os.environ["OSS_ENDPOINT"], os.environ["OSS_BUCKET"])
+          root = pathlib.Path("oss-upload")
+
+          for file_path in root.rglob("*"):
+              if not file_path.is_file():
+                  continue
+              object_key = file_path.relative_to(root).as_posix()
+              headers = {}
+              if object_key.endswith(".json"):
+                  headers["Content-Type"] = "application/json; charset=utf-8"
+                  headers["Cache-Control"] = "no-cache"
+              bucket.put_object_from_file(object_key, str(file_path), headers=headers)
+              print(f"uploaded oss://{os.environ['OSS_BUCKET']}/{object_key}")
+          PY
