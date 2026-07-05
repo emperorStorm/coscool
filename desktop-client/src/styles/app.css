@@ -1,0 +1,110 @@
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  color: #273244;
+  background: #edf1f4;
+  font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+}
+
+button,
+input,
+textarea {
+  font-family: inherit;
+}
+
+.page-shell {
+  height: 100%;
+  padding: 18px;
+  overflow: auto;
+  background: #edf1f4;
+}
+
+.work-panel {
+  background: #ffffff;
+  border: 1px solid #e6ebf1;
+  border-radius: 8px;
+}
+
+.page-title {
+  margin: 0;
+  color: #273244;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.muted {
+  color: #8190a2;
+}
+
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.toolbar-left,
+.toolbar-right {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+}
+
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.full-span {
+  grid-column: 1 / -1;
+}
+
+.question-card {
+  margin-bottom: 14px;
+  padding: 18px;
+  background: #ffffff;
+  border: 1px solid #e8edf3;
+  border-radius: 8px;
+}
+
+.pill-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 12px;
+  color: #0f8f83;
+  background: #eefaf8;
+  border: 1px solid #cdeee8;
+  border-radius: 999px;
+}
+
+.danger-link {
+  color: #d9363e;
+}
+
+@media (max-width: 1180px) {
+  .form-grid {
+    grid-template-columns: 1fr;
+  }
+}

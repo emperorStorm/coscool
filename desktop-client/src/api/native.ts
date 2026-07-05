@@ -1,0 +1,195 @@
+import { invoke } from '@tauri-apps/api/core'
+
+export interface AppSettings {
+  dataLibraryPath?: string
+  currentTeacherAccount?: string
+}
+
+export interface Teacher {
+  id: number
+  account: string
+  password?: string
+  name: string
+  phone: string
+  remark: string
+  status: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface Student {
+  id: number
+  name: string
+  phone: string
+  grade: string
+  school: string
+  remark: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface QuestionCategory {
+  id: number
+  parentId?: number
+  name: string
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface QuestionOption {
+  id?: number
+  optionKey: string
+  content: string
+  sortOrder: number
+}
+
+export interface Question {
+  id: number
+  categoryId?: number
+  title: string
+  stem: string
+  imageText: string
+  year: string
+  questionNo: string
+  answer: string
+  analysis: string
+  createdBy: string
+  createdAt: string
+  updatedAt: string
+  options: QuestionOption[]
+  tags: string[]
+  knowledgePoints: string[]
+}
+
+export interface QuestionPayload {
+  id?: number
+  categoryId?: number
+  title: string
+  stem: string
+  imageText: string
+  year: string
+  questionNo: string
+  answer: string
+  analysis: string
+  createdBy: string
+  options: QuestionOption[]
+  tags: string[]
+  knowledgePoints: string[]
+}
+
+export interface AssetRecord {
+  id: number
+  questionId?: number
+  assetType: string
+  filePath: string
+  thumbPath: string
+  mimeType: string
+  hashValue: string
+  width: number
+  height: number
+  size: number
+  createdAt: string
+}
+
+export interface QuestionQueryFilters {
+  categoryId?: number
+  includeChildren: boolean
+  title: string
+  year: string
+  tag: string
+  knowledgePoint: string
+}
+
+export interface AssetDataUrl {
+  dataUrl: string
+  mimeType: string
+}
+
+export function getAppSettings() {
+  return invoke<AppSettings>('get_app_settings')
+}
+
+export function saveAppSettings(settings: AppSettings) {
+  return invoke<AppSettings>('save_app_settings', { settings })
+}
+
+export function initDataLibraryDir(path: string) {
+  return invoke<AppSettings>('init_data_library_dir', { path })
+}
+
+export function login(account: string, password: string) {
+  return invoke<Teacher>('login', { account, password })
+}
+
+export function listTeachers() {
+  return invoke<Teacher[]>('teacher_list')
+}
+
+export function saveTeacher(teacher: Partial<Teacher>) {
+  return invoke<Teacher>('teacher_save', { teacher })
+}
+
+export function deleteTeacher(id: number) {
+  return invoke<boolean>('teacher_delete', { id })
+}
+
+export function listStudents() {
+  return invoke<Student[]>('student_list')
+}
+
+export function saveStudent(student: Partial<Student>) {
+  return invoke<Student>('student_save', { student })
+}
+
+export function deleteStudent(id: number) {
+  return invoke<boolean>('student_delete', { id })
+}
+
+export function listCategories() {
+  return invoke<QuestionCategory[]>('category_list')
+}
+
+export function saveCategory(category: Partial<QuestionCategory>) {
+  return invoke<QuestionCategory>('category_save', { category })
+}
+
+export function deleteCategory(id: number) {
+  return invoke<boolean>('category_delete', { id })
+}
+
+export function listQuestions(categoryId?: number, keyword?: string) {
+  return invoke<Question[]>('question_list', { categoryId, keyword })
+}
+
+export function queryQuestions(filters: QuestionQueryFilters) {
+  return invoke<Question[]>('question_query', { filters })
+}
+
+export function getQuestion(id: number) {
+  return invoke<Question>('question_get', { id })
+}
+
+export function saveQuestion(question: QuestionPayload) {
+  return invoke<Question>('question_save', { question })
+}
+
+export function deleteQuestion(id: number) {
+  return invoke<boolean>('question_delete', { id })
+}
+
+export function importAsset(sourcePath: string, questionId?: number) {
+  return invoke<AssetRecord>('import_asset', { sourcePath, questionId })
+}
+
+export function saveBoard(questionId: number | undefined, boardJson: string, previewDataUrl: string) {
+  return invoke<AssetRecord>('save_board', { questionId, boardJson, previewDataUrl })
+}
+
+export function exportQuestion(id: number) {
+  return invoke<string>('export_question', { id })
+}
+
+export function readAssetDataUrl(relativePath: string) {
+  return invoke<AssetDataUrl>('read_asset_data_url', { relativePath })
+}
