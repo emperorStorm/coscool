@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "cd ../desktop-client && npm run dev",
     "build:web": "cd ../desktop-client && npm run build",
+    "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "tauri:build": "npm run build:web && tauri build"
   },

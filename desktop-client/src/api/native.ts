@@ -1,4 +1,7 @@
 import { invoke } from '@tauri-apps/api/core'
+import { getVersion } from '@tauri-apps/api/app'
+import { relaunch } from '@tauri-apps/plugin-process'
+import { check, type DownloadEvent, type Update } from '@tauri-apps/plugin-updater'
 
 export interface AppSettings {
   dataLibraryPath?: string
@@ -104,6 +107,28 @@ export interface QuestionQueryFilters {
 export interface AssetDataUrl {
   dataUrl: string
   mimeType: string
+}
+
+export interface UpdateCheckResult {
+  currentVersion: string
+  update?: Update
+}
+
+export function getCurrentVersion() {
+  return getVersion()
+}
+
+export async function checkAppUpdate(): Promise<UpdateCheckResult> {
+  const update = await check()
+  return {
+    currentVersion: update?.currentVersion || await getVersion(),
+    update: update || undefined
+  }
+}
+
+export async function installAppUpdate(update: Update, onEvent: (event: DownloadEvent) => void) {
+  await update.downloadAndInstall(onEvent)
+  await relaunch()
 }
 
 export function getAppSettings() {
