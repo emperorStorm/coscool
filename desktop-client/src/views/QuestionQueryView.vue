@@ -22,10 +22,10 @@
           <a-form-item label="年份" class="query-form-item query-form-year">
             <a-input v-model:value="filters.year" allow-clear placeholder="如 2026" @press-enter="loadQuestions" />
           </a-form-item>
-          <a-form-item label="标签" class="query-form-item">
+          <a-form-item label="标签" class="query-form-item query-form-tag">
             <a-input v-model:value="filters.tag" allow-clear placeholder="请输入标签" @press-enter="loadQuestions" />
           </a-form-item>
-          <a-form-item label="知识点" class="query-form-item">
+          <a-form-item label="知识点" class="query-form-item query-form-knowledge">
             <a-input v-model:value="filters.knowledgePoint" allow-clear placeholder="请输入知识点" @press-enter="loadQuestions" />
           </a-form-item>
           <a-form-item class="query-form-actions">
@@ -242,69 +242,120 @@ async function loadDetailImage() {
 .query-main {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  gap: 14px;
+  gap: 10px;
   min-width: 0;
   overflow: hidden;
 }
 
 .query-filter {
-  padding: 16px 20px;
+  padding: 12px 14px;
+  overflow: hidden;
 }
 
 .query-form {
   display: grid;
-  grid-template-columns: minmax(190px, 1fr) minmax(240px, 1.25fr) minmax(120px, 0.58fr) minmax(180px, 0.9fr) minmax(190px, 0.95fr) auto;
-  gap: 12px 16px;
+  grid-template-columns: 300px 300px 140px;
+  width: fit-content;
+  max-width: 100%;
+  gap: 10px 14px;
   align-items: end;
+  justify-content: start;
 }
 
 .query-form-item {
   margin-bottom: 0;
+  width: 300px;
+  min-width: 0;
+}
+
+.query-form-year {
+  width: 140px;
+}
+
+.query-form-tag,
+.query-form-knowledge {
+  width: 300px;
+}
+
+.query-form-actions {
+  width: auto;
+  margin-bottom: 0;
+}
+
+.query-form :deep(.ant-form-item-row),
+.query-form :deep(.ant-form-item-control),
+.query-form :deep(.ant-form-item-control-input),
+.query-form :deep(.ant-form-item-control-input-content) {
+  width: 100%;
+  min-width: 0;
 }
 
 .query-form :deep(.ant-form-item-label) {
-  padding-bottom: 5px;
+  padding-bottom: 3px;
   font-weight: 700;
+  line-height: 18px;
 }
 
 .query-form :deep(.ant-form-item-label > label) {
-  height: 20px;
+  height: 18px;
   color: #334155;
-  font-size: 14px;
+  font-size: 13px;
+  line-height: 18px;
 }
 
-.query-form :deep(.ant-input),
+.query-form :deep(.ant-input-affix-wrapper),
 .query-form :deep(.ant-select-selector) {
-  min-height: 34px;
-  height: 34px;
+  width: 100%;
+  min-width: 0;
+  min-height: 32px;
+  height: 32px;
   border-color: #dce4ee;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: 13px;
+  line-height: 30px;
+}
+
+.query-form :deep(.ant-input-affix-wrapper) {
+  padding: 0 10px;
+}
+
+.query-form :deep(.ant-input-affix-wrapper .ant-input) {
+  height: 30px;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  line-height: 30px;
+}
+
+.query-form :deep(.ant-select-single) {
+  width: 100%;
+}
+
+.query-form :deep(.ant-select-single .ant-select-selector .ant-select-selection-search),
+.query-form :deep(.ant-select-single .ant-select-selector .ant-select-selection-item),
+.query-form :deep(.ant-select-single .ant-select-selector .ant-select-selection-placeholder) {
+  line-height: 30px;
 }
 
 .query-form :deep(.ant-select-selection-search-input) {
-  height: 32px;
+  height: 30px;
 }
 
 .query-form-title {
   grid-column: span 1;
 }
 
-.query-form-year {
-  min-width: 120px;
-}
-
-.query-form-actions {
-  margin-bottom: 0;
-}
-
 .query-button {
-  min-width: 68px;
+  min-width: 56px;
 }
 
 .query-form-actions :deep(.ant-btn) {
-  height: 34px;
-  padding: 0 16px;
+  height: 32px;
+  padding: 0 12px;
+  font-size: 13px;
+  border-radius: 6px;
 }
 
 .category-select {
@@ -390,13 +441,32 @@ async function loadDetailImage() {
   border-radius: 6px;
 }
 
-@media (max-width: 1280px) {
+@media (max-width: 1180px) {
   .query-form {
-    grid-template-columns: repeat(3, minmax(180px, 1fr));
+    grid-template-columns: 1fr 1fr 140px;
+    width: 100%;
   }
 
-  .query-form-actions {
-    grid-column: auto;
+  .query-form-item,
+  .query-form-tag,
+  .query-form-knowledge {
+    width: 100%;
+  }
+
+  .query-form-year {
+    width: 140px;
+  }
+}
+
+@media (max-width: 900px) {
+  .query-form {
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+  }
+
+  .query-form-item,
+  .query-form-year {
+    width: 100%;
   }
 }
 

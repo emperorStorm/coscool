@@ -8,7 +8,9 @@
       <div class="entry-toolbar">
         <div class="entry-search">
           <a-input v-model:value="keyword" placeholder="搜索题目" class="search-input" @press-enter="loadQuestions" />
-          <button class="entry-search-button" title="搜索" @click="loadQuestions">⌕</button>
+          <button class="entry-search-button" title="搜索" @click="loadQuestions">
+            <Search :size="16" :stroke-width="2.4" />
+          </button>
         </div>
         <button class="entry-create-button" @click="openQuestionEditor()">新增题目</button>
       </div>
@@ -172,6 +174,7 @@
 import { onMounted, reactive, ref, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import { open } from '@tauri-apps/plugin-dialog'
+import { Search } from 'lucide-vue-next'
 import BoardEditor from '../components/BoardEditor.vue'
 import QuestionCategoryTree from '../components/QuestionCategoryTree.vue'
 import type { Question, QuestionPayload } from '../api/native'
@@ -434,22 +437,22 @@ async function loadQuestionImage() {
   justify-content: space-between;
   max-width: 980px;
   margin: 0 auto;
-  padding-bottom: 42px;
+  padding-bottom: 22px;
   background: #edf1f4;
 }
 
 .entry-search {
   display: grid;
-  grid-template-columns: minmax(240px, 390px) 54px;
-  height: 46px;
+  grid-template-columns: minmax(220px, 360px) 40px;
+  height: 34px;
 }
 
 .entry-search :deep(.ant-input) {
-  height: 46px;
-  padding: 0 16px;
+  height: 34px;
+  padding: 0 12px;
   color: #263447;
-  font-size: 18px;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 400;
   background: #ffffff;
   border-color: #d7e0ea;
   border-radius: 8px 0 0 8px;
@@ -461,30 +464,33 @@ async function loadQuestionImage() {
 
 .entry-search-button {
   display: grid;
-  color: #777f88;
+  color: #687584;
   cursor: pointer;
   place-items: center;
   background: #ffffff;
   border: 1px solid #d7e0ea;
   border-left: 0;
   border-radius: 0 8px 8px 0;
-  box-shadow: 0 2px 4px rgba(49, 63, 82, 0.08);
-  font-size: 30px;
+  box-shadow: 0 1px 2px rgba(49, 63, 82, 0.06);
   line-height: 1;
 }
 
+.entry-search-button:hover {
+  color: #0f9187;
+}
+
 .entry-create-button {
-  min-width: 136px;
-  height: 50px;
-  padding: 0 22px;
+  min-width: 96px;
+  height: 34px;
+  padding: 0 16px;
   color: #ffffff;
-  font-size: 18px;
-  font-weight: 800;
+  font-size: 14px;
+  font-weight: 700;
   cursor: pointer;
   background: #0f9187;
   border: 0;
-  border-radius: 8px;
-  box-shadow: 0 5px 0 rgba(10, 93, 86, 0.22);
+  border-radius: 6px;
+  box-shadow: 0 2px 4px rgba(10, 93, 86, 0.14);
 }
 
 .entry-create-button:hover {
