@@ -253,6 +253,9 @@ jobs:
           mkdir -p oss-upload/"$latest_dir"
           cp release-assets/* oss-upload/"$version_dir"/
           cp release-assets/latest.json oss-upload/"$latest_dir"/latest.json
+          if [[ -n "$project_prefix" ]]; then
+            cp release-assets/latest.json oss-upload/latest.json
+          fi
 
       - name: Upload updater assets to Aliyun OSS
         run: |
@@ -291,8 +294,7 @@ jobs:
               print(f"uploaded oss://{os.environ['OSS_BUCKET']}/{object_key}")
 
           if project_prefix:
-              bucket.delete_object("latest.json")
-              print(f"deleted legacy oss://{os.environ['OSS_BUCKET']}/latest.json")
+              print(f"kept legacy oss://{os.environ['OSS_BUCKET']}/latest.json for installed clients")
               for obj in oss2.ObjectIterator(bucket, prefix=legacy_prefix):
                   bucket.delete_object(obj.key)
                   print(f"deleted legacy oss://{os.environ['OSS_BUCKET']}/{obj.key}")
