@@ -1,4 +1,4 @@
-import { invoke } from '@tauri-apps/api/core'
+import { invoke as tauriInvoke } from '@tauri-apps/api/core'
 import { getVersion } from '@tauri-apps/api/app'
 import { relaunch } from '@tauri-apps/plugin-process'
 import { check, type DownloadEvent, type Update } from '@tauri-apps/plugin-updater'
@@ -115,6 +115,17 @@ export interface AssetDataUrl {
 export interface UpdateCheckResult {
   currentVersion: string
   update?: Update
+}
+
+function invoke<T>(command: string, args?: Parameters<typeof tauriInvoke>[1]) {
+  if (!isTauriRuntime()) {
+    return Promise.reject(new Error('当前页面需要在课思库桌面客户端中运行，请通过 Tauri 开发模式或已安装的桌面应用打开。'))
+  }
+  return tauriInvoke<T>(command, args)
+}
+
+function isTauriRuntime() {
+  return typeof window !== 'undefined' && Boolean((window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__)
 }
 
 export function getCurrentVersion() {

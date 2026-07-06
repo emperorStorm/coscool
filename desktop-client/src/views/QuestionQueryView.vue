@@ -83,7 +83,7 @@
           </section>
           <section class="detail-section">
             <h3>题目</h3>
-            <p>{{ currentQuestion.stem || '暂无题干' }}</p>
+            <MathText class="detail-math-text" :content="currentQuestion.stem || '暂无题干'" />
             <img v-if="detailImageUrl" class="detail-image" :src="detailImageUrl" alt="题目配图预览" />
             <a-alert v-else-if="currentQuestion.imageText" type="warning" show-icon message="图片不存在或无法预览" />
           </section>
@@ -92,7 +92,7 @@
             <div class="detail-options">
               <div v-for="option in currentQuestion.options" :key="option.optionKey">
                 <strong>{{ option.optionKey }}.</strong>
-                <span>{{ option.content || '-' }}</span>
+                <MathText :content="option.content || '-'" />
               </div>
             </div>
           </section>
@@ -112,11 +112,11 @@
           </section>
           <section class="detail-section">
             <h3>答案</h3>
-            <p>{{ currentQuestion.answer || '暂无答案' }}</p>
+            <MathText class="detail-math-text" :content="currentQuestion.answer || '暂无答案'" />
           </section>
           <section class="detail-section">
             <h3>解析</h3>
-            <p>{{ currentQuestion.analysis || '暂无解析' }}</p>
+            <MathText class="detail-math-text" :content="currentQuestion.analysis || '暂无解析'" />
           </section>
         </template>
       </a-spin>
@@ -127,6 +127,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { message } from 'ant-design-vue'
+import MathText from '../components/MathText.vue'
 import type { Question, QuestionCategory, QuestionQueryFilters } from '../api/native'
 import { getQuestion, listCategories, queryQuestions, readAssetDataUrl } from '../api/native'
 
@@ -422,6 +423,9 @@ async function loadDetailImage() {
 }
 
 .detail-options div {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
   padding: 10px;
   background: #f7fafc;
   border: 1px solid #e5ecf2;
@@ -429,7 +433,17 @@ async function loadDetailImage() {
 }
 
 .detail-options strong {
-  margin-right: 6px;
+  flex: 0 0 auto;
+}
+
+.detail-options :deep(.math-text) {
+  min-width: 0;
+}
+
+.detail-math-text {
+  color: #253142;
+  font-size: 15px;
+  line-height: 1.8;
 }
 
 .detail-image {

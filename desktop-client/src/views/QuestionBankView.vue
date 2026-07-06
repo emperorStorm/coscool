@@ -32,11 +32,14 @@
             </div>
           </div>
           <div class="question-box">
-            <p>{{ question.stem || '暂无题干' }}</p>
+            <MathText class="question-text" :content="question.stem || '暂无题干'" />
             <img v-if="questionImageMap[question.id]" class="card-image" :src="questionImageMap[question.id]" alt="题目配图预览" />
             <p v-else-if="question.imageText" class="muted">{{ question.imageText }}</p>
             <div class="option-row">
-              <span v-for="option in question.options" :key="option.optionKey">{{ option.optionKey }}. {{ option.content }}</span>
+              <div v-for="option in question.options" :key="option.optionKey" class="option-item">
+                <strong>{{ option.optionKey }}.</strong>
+                <MathText :content="option.content || '-'" />
+              </div>
             </div>
           </div>
           <div class="question-footer">
@@ -55,181 +58,39 @@
       </a-spin>
     </main>
 
-    <a-drawer v-model:open="questionOpen" title="题目录入" width="92%" destroy-on-close>
-      <div class="editor-layout">
-        <section class="editor-form">
-          <div class="editor-topbar">
-            <a-select v-model:value="questionForm.year" placeholder="年份" allow-clear>
-              <a-select-option value="2026">2026</a-select-option>
-              <a-select-option value="2025">2025</a-select-option>
-              <a-select-option value="2024">2024</a-select-option>
-            </a-select>
-            <a-input v-model:value="questionForm.questionNo" placeholder="题号" />
-            <a-button>智能识别</a-button>
-            <a-button>AI 助手</a-button>
-            <a-button>快速录入</a-button>
-          </div>
-          <div class="entry-block">
-            <label>标题</label>
-            <a-input v-model:value="questionForm.title" />
-          </div>
-          <div class="entry-block">
-            <div class="block-head">
-              <label>题目</label>
-              <a-space>
-                <a-button size="small">替换</a-button>
-                <a-button size="small">选择并解析选项</a-button>
-              </a-space>
-            </div>
-            <a-textarea v-model:value="questionForm.stem" :rows="5" />
-          </div>
-          <div class="entry-block">
-            <div class="block-head">
-              <label>题目配图</label>
-              <a-space>
-                <a-button size="small" @click="addImage">导入图片</a-button>
-                <a-button size="small" @click="boardVisible = !boardVisible">批注板</a-button>
-              </a-space>
-            </div>
-            <a-input v-model:value="questionForm.imageText" placeholder="图片说明或配图描述" />
-            <div v-if="questionImageUrl" class="entry-image-preview">
-              <img :src="questionImageUrl" alt="题目配图预览" />
-            </div>
-            <BoardEditor v-if="boardVisible" class="board-section" @save="handleBoardSave" />
-          </div>
-          <div class="option-grid">
-            <div v-for="option in questionForm.options" :key="option.optionKey" class="entry-block option-block">
-              <label>选项 {{ option.optionKey }}</label>
-              <a-textarea v-model:value="option.content" :rows="3" />
-            </div>
-          </div>
-          <div class="entry-block">
-            <div class="block-head">
-              <label>知识点</label>
-              <a-button size="small">历史数据</a-button>
-            </div>
-            <a-select v-model:value="questionForm.knowledgePoints" mode="tags" placeholder="输入知识点后回车" />
-          </div>
-          <div class="entry-block">
-            <div class="block-head">
-              <label>标签</label>
-              <a-button size="small">历史数据</a-button>
-            </div>
-            <a-select v-model:value="questionForm.tags" mode="tags" placeholder="输入标签后回车" />
-          </div>
-          <div class="entry-block">
-            <label>答案（结果）</label>
-            <a-textarea v-model:value="questionForm.answer" :rows="3" />
-          </div>
-          <div class="entry-block">
-            <label>解析</label>
-            <a-textarea v-model:value="questionForm.analysis" :rows="4" />
-          </div>
-        </section>
-
-        <section class="preview-pane">
-          <div class="preview-card">
-            <span class="preview-label">题目</span>
-            <h3>{{ questionForm.stem || '题目内容预览' }}</h3>
-            <img v-if="questionImageUrl" class="preview-image" :src="questionImageUrl" alt="题目配图预览" />
-            <p v-else-if="questionForm.imageText" class="muted">{{ questionForm.imageText }}</p>
-            <div class="preview-options">
-              <span v-for="option in questionForm.options" :key="option.optionKey">{{ option.optionKey }}. {{ option.content || '未填写' }}</span>
-            </div>
-          </div>
-          <div class="preview-card">
-            <span class="preview-label">知识点</span>
-            <div class="pill-list">
-              <span v-for="item in questionForm.knowledgePoints" :key="item" class="pill">{{ item }}</span>
-            </div>
-          </div>
-          <div class="preview-card">
-            <span class="preview-label">标签</span>
-            <div class="pill-list">
-              <span v-for="item in questionForm.tags" :key="item" class="pill">{{ item }}</span>
-            </div>
-          </div>
-          <div class="preview-card">
-            <span class="preview-label">答案</span>
-            <p>{{ questionForm.answer || '暂无答案' }}</p>
-          </div>
-          <div class="preview-card">
-            <span class="preview-label">解析</span>
-            <p>{{ questionForm.analysis || '暂无解析' }}</p>
-          </div>
-        </section>
-      </div>
-      <template #footer>
-        <a-space>
-          <a-button @click="questionOpen = false">返回</a-button>
-          <a-button type="primary" :loading="savingQuestion" @click="submitQuestion">保存</a-button>
-          <a-button type="primary" :loading="savingQuestion" @click="submitAndNext">录下一题</a-button>
-        </a-space>
-      </template>
-    </a-drawer>
   </div>
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from 'vue'
+import { onMounted, ref } from 'vue'
 import { message } from 'ant-design-vue'
 import { open } from '@tauri-apps/plugin-dialog'
+import { useRouter } from 'vue-router'
 import { Search } from 'lucide-vue-next'
-import BoardEditor from '../components/BoardEditor.vue'
+import MathText from '../components/MathText.vue'
 import QuestionCategoryTree from '../components/QuestionCategoryTree.vue'
-import type { Question, QuestionPayload } from '../api/native'
+import type { Question } from '../api/native'
 import {
   deleteQuestion,
   exportQuestion,
   getAppSettings,
-  getQuestion,
   initDataLibraryDir,
-  importAsset,
   listQuestions,
   readAssetDataUrl,
-  saveBoard,
-  saveQuestion,
 } from '../api/native'
 
 const loading = ref(false)
-const savingQuestion = ref(false)
-const questionOpen = ref(false)
-const boardVisible = ref(false)
 const categoryTreeRef = ref<InstanceType<typeof QuestionCategoryTree>>()
+const router = useRouter()
 const selectedCategoryId = ref<number | undefined>()
 const keyword = ref('')
-const questionImageUrl = ref('')
 const questionImageMap = ref<Record<number, string>>({})
 const questions = ref<Question[]>([])
-const questionForm = reactive<QuestionPayload>({
-  categoryId: undefined,
-  title: '',
-  stem: '',
-  imageText: '',
-  year: '',
-  questionNo: '',
-  answer: '',
-  analysis: '',
-  createdBy: 'yaoyao',
-  options: [
-    { optionKey: 'A', content: '', sortOrder: 1 },
-    { optionKey: 'B', content: '', sortOrder: 2 },
-    { optionKey: 'C', content: '', sortOrder: 3 },
-    { optionKey: 'D', content: '', sortOrder: 4 }
-  ],
-  tags: [],
-  knowledgePoints: []
-})
 
 onMounted(async () => {
   await ensureLibrary()
   await loadQuestions()
 })
-
-watch(
-  () => questionForm.imageText,
-  () => loadQuestionImage()
-)
 
 async function ensureLibrary() {
   const settings = await getAppSettings()
@@ -281,66 +142,15 @@ function selectCategory(id?: number) {
   loadQuestions()
 }
 
-async function openQuestionEditor(id?: number) {
-  resetQuestion()
+function openQuestionEditor(id?: number) {
   if (id) {
-    Object.assign(questionForm, await getQuestion(id))
-  } else {
-    questionForm.categoryId = selectedCategoryId.value
+    router.push(`/question-editor/${id}`)
+    return
   }
-  questionOpen.value = true
-  await loadQuestionImage()
-}
-
-function resetQuestion() {
-  Object.assign(questionForm, {
-    id: undefined,
-    categoryId: selectedCategoryId.value,
-    title: '',
-    stem: '',
-    imageText: '',
-    year: '',
-    questionNo: '',
-    answer: '',
-    analysis: '',
-    createdBy: 'yaoyao',
-    options: [
-      { optionKey: 'A', content: '', sortOrder: 1 },
-      { optionKey: 'B', content: '', sortOrder: 2 },
-      { optionKey: 'C', content: '', sortOrder: 3 },
-      { optionKey: 'D', content: '', sortOrder: 4 }
-    ],
-    tags: [],
-    knowledgePoints: []
+  router.push({
+    path: '/question-editor',
+    query: selectedCategoryId.value ? { categoryId: selectedCategoryId.value } : undefined
   })
-}
-
-async function submitQuestion() {
-  if (!questionForm.title || !questionForm.stem) {
-    message.warning('请填写标题和题目')
-    return false
-  }
-  savingQuestion.value = true
-  try {
-    const saved = await saveQuestion(questionForm)
-    Object.assign(questionForm, saved)
-    questionOpen.value = false
-    await categoryTreeRef.value?.load()
-    await loadQuestions()
-    return true
-  } catch (error) {
-    message.error(String(error))
-    return false
-  } finally {
-    savingQuestion.value = false
-  }
-}
-
-async function submitAndNext() {
-  const saved = await submitQuestion()
-  if (!saved) return
-  resetQuestion()
-  questionOpen.value = true
 }
 
 async function removeQuestion(id: number) {
@@ -361,47 +171,6 @@ async function handleExport(id: number) {
   }
 }
 
-async function addImage() {
-  const selected = await open({
-    multiple: false,
-    filters: [
-      {
-        name: '图片',
-        extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif']
-      }
-    ]
-  })
-  const sourcePath = Array.isArray(selected) ? selected[0] : selected
-  if (!sourcePath) return
-  try {
-    const asset = await importAsset(sourcePath, questionForm.id)
-    questionForm.imageText = asset.filePath
-    await loadQuestionImage()
-    message.success('图片已导入资源目录')
-  } catch (error) {
-    message.error(String(error))
-  }
-}
-
-async function handleBoardSave(payload: { json: string; previewDataUrl: string }) {
-  try {
-    await saveBoard(questionForm.id, payload.json, payload.previewDataUrl)
-    message.success('批注板已保存')
-  } catch (error) {
-    message.error(String(error))
-  }
-}
-
-async function loadQuestionImage() {
-  questionImageUrl.value = ''
-  if (!questionForm.imageText || !questionForm.imageText.startsWith('assets/')) return
-  try {
-    const asset = await readAssetDataUrl(questionForm.imageText)
-    questionImageUrl.value = asset.dataUrl
-  } catch {
-    questionImageUrl.value = ''
-  }
-}
 </script>
 
 <style scoped>
@@ -569,12 +338,11 @@ async function loadQuestionImage() {
   border-radius: 8px;
 }
 
-.question-box p {
+.question-text {
   color: #243144;
   font-size: 15px;
   font-weight: 700;
   line-height: 1.7;
-  margin: 0;
 }
 
 .option-row {
@@ -585,6 +353,23 @@ async function loadQuestionImage() {
   color: #263447;
   font-size: 15px;
   line-height: 1.6;
+}
+
+.option-item,
+.preview-option-item {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.option-item strong,
+.preview-option-item strong {
+  flex: 0 0 auto;
+}
+
+.option-item :deep(.math-text),
+.preview-option-item :deep(.math-text) {
+  min-width: 0;
 }
 
 .card-image {
@@ -651,110 +436,9 @@ async function loadQuestionImage() {
   border-color: #c6eee8;
 }
 
-.editor-layout {
-  display: grid;
-  grid-template-columns: minmax(520px, 1fr) minmax(420px, 1fr);
-  gap: 14px;
-  min-height: calc(100vh - 170px);
-  background: #eef1f4;
-}
-
-.editor-form,
-.preview-pane {
-  min-width: 0;
-  max-height: calc(100vh - 170px);
-  overflow: auto;
-}
-
-.editor-topbar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-  padding: 10px 0;
-}
-
-.entry-block,
-.preview-card {
-  margin-bottom: 12px;
-  padding: 12px;
-  background: #ffffff;
-  border: 1px solid #e6ebf0;
-  border-radius: 8px;
-}
-
-.entry-block label {
-  display: inline-block;
-  margin-bottom: 8px;
-  color: #7a3ff2;
-  font-weight: 700;
-}
-
-.block-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.option-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.board-section {
-  margin-top: 10px;
-}
-
-.entry-image-preview {
-  margin-top: 10px;
-}
-
-.entry-image-preview img,
-.preview-image {
-  display: block;
-  max-width: 100%;
-  max-height: 260px;
-  object-fit: contain;
-  border: 1px solid #e2e9f0;
-  border-radius: 6px;
-}
-
-.preview-image {
-  margin: 12px 0;
-}
-
-.preview-pane {
-  padding-left: 10px;
-  border-left: 3px solid #d3d9e0;
-}
-
-.preview-card {
-  padding: 20px;
-}
-
-.preview-label {
-  display: block;
-  margin-bottom: 14px;
-  color: #98a5b3;
-  font-weight: 700;
-}
-
-.preview-options {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 18px;
-  margin-top: 22px;
-  font-size: 16px;
-}
-
 @media (max-width: 1280px) {
   .question-bank {
     grid-template-columns: 260px minmax(0, 1fr);
-  }
-
-  .editor-layout {
-    grid-template-columns: 1fr;
   }
 
   .question-footer {
@@ -764,11 +448,6 @@ async function loadQuestionImage() {
 
   .question-tags {
     justify-content: flex-start;
-  }
-
-  .preview-pane {
-    padding-left: 0;
-    border-left: 0;
   }
 }
 </style>

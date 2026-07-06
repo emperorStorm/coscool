@@ -4,6 +4,7 @@ import MainLayout from '../views/MainLayout.vue'
 import TeacherView from '../views/TeacherView.vue'
 import StudentView from '../views/StudentView.vue'
 import QuestionBankView from '../views/QuestionBankView.vue'
+import QuestionEditorView from '../views/QuestionEditorView.vue'
 import QuestionQueryView from '../views/QuestionQueryView.vue'
 import SettingsView from '../views/SettingsView.vue'
 
@@ -12,10 +13,13 @@ const router = createRouter({
   routes: [
     { path: '/', redirect: '/login' },
     { path: '/login', component: LoginView },
+    { path: '/question-editor', component: QuestionEditorView, meta: { requiresAuth: true } },
+    { path: '/question-editor/:id', component: QuestionEditorView, meta: { requiresAuth: true } },
     {
       path: '/app',
       component: MainLayout,
       redirect: '/app/questions/entry',
+      meta: { requiresAuth: true },
       children: [
         { path: 'teachers', component: TeacherView },
         { path: 'students', component: StudentView },
@@ -29,7 +33,7 @@ const router = createRouter({
 })
 
 router.beforeEach((to) => {
-  if (to.path.startsWith('/app') && !localStorage.getItem('coscool_teacher')) {
+  if (to.matched.some((record) => record.meta.requiresAuth) && !localStorage.getItem('coscool_teacher')) {
     return '/login'
   }
 
