@@ -252,19 +252,177 @@ export const formulaCategories: FormulaCategory[] = [
   }
 ]
 
-export const commonSymbols: FormulaItem[] = [
-  { label: '属于', latex: '$\\in$' },
-  { label: '不属于', latex: '$\\notin$' },
-  { label: '并集', latex: '$\\cup$' },
-  { label: '交集', latex: '$\\cap$' },
-  { label: '子集', latex: '$\\subset$' },
-  { label: '空集', latex: '$\\varnothing$' },
-  { label: '约等于', latex: '$\\approx$' },
-  { label: '恒等于', latex: '$\\equiv$' },
-  { label: '无穷', latex: '$\\infty$' },
-  { label: '因此', latex: '$\\therefore$' },
-  { label: '因为', latex: '$\\because$' },
-  { label: '推出', latex: '$\\Rightarrow$' }
+export const commonSymbolCategories: FormulaCategory[] = [
+  {
+    key: 'basicOperation',
+    name: '基础运算',
+    items: [
+      { label: '加号', latex: '$+$' },
+      { label: '减号', latex: '$-$' },
+      { label: '加减', latex: '$\\pm$' },
+      { label: '减加', latex: '$\\mp$' },
+      { label: '乘号', latex: '$\\times$' },
+      { label: '除号', latex: '$\\div$' },
+      { label: '点乘', latex: '$\\cdot$' },
+      { label: '星乘', latex: '$\\ast$' },
+      { label: '绝对值', latex: '$|x|$' },
+      { label: '范数', latex: '$\\|x\\|$' },
+      { label: '圆括号', latex: '$(x)$' },
+      { label: '方括号', latex: '$[x]$' },
+      { label: '花括号', latex: '$\\{x\\}$' },
+      { label: '比例', latex: '$a:b$' },
+      { label: '省略号', latex: '$\\cdots$' },
+      { label: '阶乘', latex: '$n!$' }
+    ]
+  },
+  {
+    key: 'fractionRadical',
+    name: '分数根式',
+    items: [
+      { label: '二分之一', latex: '$\\frac{1}{2}$' },
+      { label: '三分之一', latex: '$\\frac{1}{3}$' },
+      { label: '四分之一', latex: '$\\frac{1}{4}$' },
+      { label: '分式', latex: '$\\frac{a}{b}$' },
+      { label: '带分式', latex: '$1\\frac{1}{2}$' },
+      { label: '负分式', latex: '$-\\frac{a}{b}$' },
+      { label: '连分式', latex: '$\\frac{1}{1+\\frac{1}{x}}$' },
+      { label: '平方根', latex: '$\\sqrt{x}$' },
+      { label: '三次根', latex: '$\\sqrt[3]{x}$' },
+      { label: 'n 次根', latex: '$\\sqrt[n]{x}$' },
+      { label: '根式加减', latex: '$\\sqrt{a}\\pm\\sqrt{b}$' },
+      { label: '根式分母', latex: '$\\frac{1}{\\sqrt{x}}$' },
+      { label: '根式模板', latex: '$\\sqrt{a^2+b^2}$' },
+      { label: '根号外系数', latex: '$a\\sqrt{b}$' }
+    ]
+  },
+  {
+    key: 'scriptPower',
+    name: '指数上下标',
+    items: [
+      { label: '平方', latex: '$x^2$' },
+      { label: '立方', latex: '$x^3$' },
+      { label: 'n 次方', latex: '$x^n$' },
+      { label: '负指数', latex: '$x^{-1}$' },
+      { label: '分数指数', latex: '$x^{\\frac{1}{2}}$' },
+      { label: '指数函数', latex: '$e^x$' },
+      { label: '幂函数', latex: '$a^x$' },
+      { label: '下标', latex: '$x_i$' },
+      { label: '双下标', latex: '$a_{ij}$' },
+      { label: '上下标', latex: '$x_i^2$' },
+      { label: '序列下标', latex: '$a_{n+1}$' },
+      { label: '科学计数法', latex: '$a\\times10^n$' },
+      { label: '极限趋近', latex: '$x\\to0$' },
+      { label: '向量分量', latex: '$\\vec a_i$' }
+    ]
+  },
+  {
+    key: 'relationCompare',
+    name: '关系比较',
+    items: [
+      { label: '等于', latex: '$=$' },
+      { label: '不等于', latex: '$\\ne$' },
+      { label: '大于', latex: '$>$' },
+      { label: '小于', latex: '$<$' },
+      { label: '大于等于', latex: '$\\ge$' },
+      { label: '小于等于', latex: '$\\le$' },
+      { label: '约等于', latex: '$\\approx$' },
+      { label: '恒等于', latex: '$\\equiv$' },
+      { label: '正比于', latex: '$\\propto$' },
+      { label: '相似', latex: '$\\sim$' },
+      { label: '不相似', latex: '$\\nsim$' },
+      { label: '全等', latex: '$\\cong$' },
+      { label: '趋近于', latex: '$\\to$' },
+      { label: '远小于', latex: '$\\ll$' },
+      { label: '远大于', latex: '$\\gg$' },
+      { label: '对应', latex: '$\\leftrightarrow$' }
+    ]
+  },
+  {
+    key: 'setLogic',
+    name: '集合逻辑',
+    items: [
+      { label: '属于', latex: '$\\in$' },
+      { label: '不属于', latex: '$\\notin$' },
+      { label: '包含于', latex: '$\\subset$' },
+      { label: '真包含于', latex: '$\\subsetneqq$' },
+      { label: '包含', latex: '$\\supset$' },
+      { label: '真包含', latex: '$\\supsetneqq$' },
+      { label: '并集', latex: '$\\cup$' },
+      { label: '交集', latex: '$\\cap$' },
+      { label: '空集', latex: '$\\varnothing$' },
+      { label: '全集', latex: '$U$' },
+      { label: '补集', latex: '$\\complement A$' },
+      { label: '且', latex: '$\\land$' },
+      { label: '或', latex: '$\\lor$' },
+      { label: '非', latex: '$\\lnot$' },
+      { label: '任意', latex: '$\\forall$' },
+      { label: '存在', latex: '$\\exists$' }
+    ]
+  },
+  {
+    key: 'basicGeometry',
+    name: '几何基础',
+    items: [
+      { label: '角', latex: '$\\angle A$' },
+      { label: '角度', latex: '$60^\\circ$' },
+      { label: '三角形', latex: '$\\triangle ABC$' },
+      { label: '平行', latex: '$AB\\parallel CD$' },
+      { label: '垂直', latex: '$AB\\perp CD$' },
+      { label: '圆', latex: '$\\odot O$' },
+      { label: '弧', latex: '$\\overset{\\frown}{AB}$' },
+      { label: '线段', latex: '$\\overline{AB}$' },
+      { label: '射线', latex: '$\\overrightarrow{AB}$' },
+      { label: '直线', latex: '$\\overleftrightarrow{AB}$' },
+      { label: '向量', latex: '$\\vec{AB}$' },
+      { label: '相似', latex: '$\\triangle ABC\\sim\\triangle DEF$' },
+      { label: '全等', latex: '$\\triangle ABC\\cong\\triangle DEF$' },
+      { label: '面积', latex: '$S=\\frac{1}{2}ah$' },
+      { label: '周长', latex: '$C=2\\pi r$' },
+      { label: '体积', latex: '$V=abh$' }
+    ]
+  },
+  {
+    key: 'statisticsSum',
+    name: '统计求和',
+    items: [
+      { label: '求和', latex: '$\\sum_{i=1}^{n}x_i$' },
+      { label: '平方和', latex: '$\\sum_{i=1}^{n}x_i^2$' },
+      { label: '连乘', latex: '$\\prod_{i=1}^{n}x_i$' },
+      { label: '平均数', latex: '$\\frac{x_1+x_2+\\cdots+x_n}{n}$' },
+      { label: '样本均值', latex: '$\\overline{x}$' },
+      { label: '总体均值', latex: '$\\mu$' },
+      { label: '方差', latex: '$s^2=\\frac{1}{n}\\sum_{i=1}^{n}(x_i-\\overline{x})^2$' },
+      { label: '标准差', latex: '$s=\\sqrt{\\frac{1}{n}\\sum_{i=1}^{n}(x_i-\\overline{x})^2}$' },
+      { label: '百分比', latex: '$p\\%$' },
+      { label: '组合数', latex: '$\\binom{n}{k}$' },
+      { label: '排列数', latex: '$A_n^k$' },
+      { label: '概率', latex: '$P(A)$' },
+      { label: '条件概率', latex: '$P(A\\mid B)$' },
+      { label: '正态分布', latex: '$N(\\mu,\\sigma^2)$' }
+    ]
+  },
+  {
+    key: 'special',
+    name: '常用特殊',
+    items: [
+      { label: '无穷', latex: '$\\infty$' },
+      { label: '正无穷', latex: '$+\\infty$' },
+      { label: '负无穷', latex: '$-\\infty$' },
+      { label: '因此', latex: '$\\therefore$' },
+      { label: '因为', latex: '$\\because$' },
+      { label: '推出', latex: '$\\Rightarrow$' },
+      { label: '双向推出', latex: '$\\Leftrightarrow$' },
+      { label: '度', latex: '$^\\circ$' },
+      { label: '摄氏度', latex: '$^\\circ\\mathrm{C}$' },
+      { label: '上箭头', latex: '$\\uparrow$' },
+      { label: '下箭头', latex: '$\\downarrow$' },
+      { label: '左箭头', latex: '$\\leftarrow$' },
+      { label: '右箭头', latex: '$\\rightarrow$' },
+      { label: '左右箭头', latex: '$\\leftrightarrow$' },
+      { label: '空白占位', latex: '$\\square$' },
+      { label: '星号', latex: '$\\star$' }
+    ]
+  }
 ]
 
 export const phoneticSymbols: FormulaItem[] = [

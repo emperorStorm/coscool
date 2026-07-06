@@ -28,18 +28,15 @@
 
       <main class="symbol-body">
         <aside class="symbol-category-pane">
-          <template v-if="activeTab === 'formula'">
-            <button
-              v-for="category in formulaCategories"
-              :key="category.key"
-              type="button"
-              :class="['category-item', { active: activeCategory === category.key }]"
-              @click="activeCategory = category.key"
-            >
-              {{ category.name }}
-            </button>
-          </template>
-          <button v-else type="button" class="category-item active">全部</button>
+          <button
+            v-for="category in currentCategories"
+            :key="category.key"
+            type="button"
+            :class="['category-item', { active: currentCategoryKey === category.key }]"
+            @click="selectCategory(category.key)"
+          >
+            {{ category.name }}
+          </button>
         </aside>
 
         <section class="symbol-content">
@@ -66,7 +63,7 @@
 import { computed, ref } from 'vue'
 import { message } from 'ant-design-vue'
 import MathText from './MathText.vue'
-import { commonSymbols, formulaCategories, phoneticSymbols } from '../constants/formulaSymbols'
+import { commonSymbolCategories, formulaCategories, phoneticSymbols } from '../constants/formulaSymbols'
 
 const props = defineProps<{
   open: boolean
@@ -83,12 +80,39 @@ const tabs = [
 ] as const
 
 const activeTab = ref<(typeof tabs)[number]['key']>('formula')
-const activeCategory = ref('geometry')
-const currentItems = computed(() => {
-  if (activeTab.value === 'symbol') return commonSymbols
-  if (activeTab.value === 'phonetic') return phoneticSymbols
-  return formulaCategories.find((item) => item.key === activeCategory.value)?.items || []
+const activeFormulaCategory = ref('geometry')
+const activeSymbolCategory = ref('basicOperation')
+const phoneticCategory = {
+  key: 'all',
+  name: '全部',
+  items: phoneticSymbols
+}
+
+const currentCategories = computed(() => {
+  if (activeTab.value === 'symbol') return commonSymbolCategories
+  if (activeTab.value === 'phonetic') return [phoneticCategory]
+  return formulaCategories
 })
+
+const currentCategoryKey = computed(() => {
+  if (activeTab.value === 'symbol') return activeSymbolCategory.value
+  if (activeTab.value === 'phonetic') return phoneticCategory.key
+  return activeFormulaCategory.value
+})
+
+const currentItems = computed(() => {
+  return currentCategories.value.find((item) => item.key === currentCategoryKey.value)?.items || []
+})
+
+function selectCategory(categoryKey: string) {
+  if (activeTab.value === 'symbol') {
+    activeSymbolCategory.value = categoryKey
+    return
+  }
+  if (activeTab.value === 'formula') {
+    activeFormulaCategory.value = categoryKey
+  }
+}
 
 async function copyFormula(latex: string) {
   try {
@@ -191,7 +215,9 @@ async function copyText(text: string) {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-height: 0;
   padding: 18px 14px;
+  overflow: auto;
   background: #ffffff;
   border: 1px solid #e5ebf2;
   border-radius: 10px;
