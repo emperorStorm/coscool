@@ -37,55 +37,146 @@
         </a-form>
       </section>
 
-      <a-table
-        class="work-panel query-table"
-        :columns="columns"
-        :data-source="questions"
-        :loading="loading"
-        row-key="id"
-        :pagination="{ pageSize: 10 }"
-        :scroll="{ x: 1394 }"
-      >
-        <template #bodyCell="{ column, record }">
-          <template v-if="column.key === 'category'">
-            {{ categoryNameMap.get(record.categoryId) || '-' }}
-          </template>
-          <template v-if="column.key === 'title'">
-            <span class="query-title-cell">{{ record.title || '未命名题目' }}</span>
-          </template>
-          <template v-if="column.key === 'questionType'">
-            {{ record.questionType || '-' }}
-          </template>
-          <template v-if="column.key === 'difficulty'">
-            <span v-if="record.difficulty > 0" class="difficulty-text">{{ formatDifficulty(record.difficulty) }}</span>
-            <span v-else>-</span>
-          </template>
-          <template v-if="column.key === 'tags'">
-            <a-space wrap>
-              <a-tag v-for="tag in record.tags" :key="tag" color="cyan">{{ tag }}</a-tag>
-            </a-space>
-          </template>
-          <template v-if="column.key === 'knowledgePoints'">
-            <a-space wrap>
-              <a-tag v-for="item in record.knowledgePoints" :key="item">{{ item }}</a-tag>
-            </a-space>
-          </template>
-          <template v-if="column.key === 'action'">
-            <a-space :size="4">
-              <a-button size="small" type="link" @click="openDetail(record.id)">查看</a-button>
-              <a-button size="small" type="link" :disabled="cartIdSet.has(record.id)" @click="addToPaperCart(record.id)">
-                {{ cartIdSet.has(record.id) ? '已加入' : '加入试卷' }}
-              </a-button>
-            </a-space>
-          </template>
-        </template>
-      </a-table>
+      <section class="query-result work-panel">
+        <div class="result-head">
+          <strong>题库查询</strong>
+          <span class="muted">共 {{ questions.length }} 道题，已加入试题栏 {{ cartCount }} 道</span>
+        </div>
+        <a-spin :spinning="loading">
+          <a-empty v-if="!questions.length" description="暂无匹配题目" />
+          <div v-else class="question-list">
+            <article
+              v-for="(question, index) in questions"
+              :key="question.id"
+              class="question-result-card"
+              :class="{ selected: cartIdSet.has(question.id) }"
+            >
+              <div class="question-card-main">
+                <div class="question-order">{{ index + 1 }}</div>
+                <div class="question-content">
+                  <div class="question-title-row">
+                    <span v-if="question.year" class="source-badge">{{ question.year }}</span>
+                    <strong>{{ question.title || '未命名题目' }}</strong>
+                  </div>
+                  <div class="question-stem">
+                    <MathText :content="question.stem || '暂无题干'" />
+                  </div>
+                  <div v-if="question.options.length && isChoiceQuestion(question.questionType)" class="option-grid">
+                    <div v-for="option in question.options" :key="option.optionKey" class="option-item">
+                      <strong>{{ option.optionKey }}.</strong>
+                      <MathText :content="option.content || '-'" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="question-card-foot">
+                <div class="question-meta">
+                  <span>更新：{{ formatDate(question.updatedAt || question.createdAt) }}</span>
+                  <span>题型：{{ question.questionType || '未设置' }}</span>
+                  <span>难度：{{ formatDifficultyText(question.difficulty) }}</span>
+                  <span>分类：{{ categoryNameMap.get(question.categoryId) || '未分类' }}</span>
+                  <span v-if="question.questionNo">题号：{{ question.questionNo }}</span>
+                </div>
+                <div class="question-tags">
+                  <span v-for="item in question.knowledgePoints" :key="`knowledge-${item}`">{{ item }}</span>
+                  <span v-for="tag in question.tags" :key="`tag-${tag}`" class="tag-cyan">{{ tag }}</span>
+                </div>
+                <div class="question-actions">
+                  <a-button size="small" type="link" @click="openDetail(question.id)">查看</a-button>
+                  <a-button size="small" type="link" @click="openDetail(question.id)">解析</a-button>
+                  <a-button size="small" type="link" @click="openQuestionExport(question.id)">下载</a-button>
+                  <a-button
+                    size="small"
+                    class="cart-add-button"
+                    :class="{ added: cartIdSet.has(question.id) }"
+                    :disabled="cartIdSet.has(question.id)"
+                    @click="addToPaperCart(question.id)"
+                  >
+                    {{ cartIdSet.has(question.id) ? '已加入' : '+试题栏' }}
+                  </a-button>
+                </div>
+              </div>
+            </article>
+          </div>
+        </a-spin>
+      </section>
     </main>
 
-    <button class="paper-cart-button" type="button" title="组装试卷" @click="openPaperAssemble">
-      <ShoppingCart :size="24" :stroke-width="2.4" />
-      <span v-if="cartCount > 0">{{ cartCount }}</span>
-    </button>
+    <div class="paper-cart-float">
+      <div class="cart-analysis-panel">
+        <div class="analysis-title">
+          <strong>试题栏分析</strong>
+          <span>题量 {{ cartCount }}</span>
+        </div>
+        <a-empty v-if="cartCount === 0" description="暂无试题" />
+        <template v-else>
+          <div class="analysis-summary">
+            <div>
+              <strong>{{ cartCount }}</strong>
+              <span>总题量</span>
+            </div>
+            <div>
+              <strong>{{ cartKnownCount }}</strong>
+              <span>当前可分析</span>
+            </div>
+            <div>
+              <strong>{{ cartUnknownCount }}</strong>
+              <span>未在当前列表</span>
+            </div>
+          </div>
+          <div class="analysis-section">
+            <h3>题型分布</h3>
+            <div v-for="item in cartTypeStats" :key="item.name" class="stat-row">
+              <span>{{ item.name }}</span>
+              <div>
+                <i :style="{ width: `${item.percent}%` }"></i>
+              </div>
+              <em>{{ item.count }}</em>
+            </div>
+          </div>
+          <div class="analysis-section">
+            <h3>难度分布</h3>
+            <div v-for="item in cartDifficultyStats" :key="item.name" class="stat-row">
+              <span>{{ item.name }}</span>
+              <div>
+                <i :style="{ width: `${item.percent}%` }"></i>
+              </div>
+              <em>{{ item.count }}</em>
+            </div>
+          </div>
+        </template>
+      </div>
+      <button class="paper-cart-button" type="button" title="进入试题栏" @click="openPaperAssemble">
+        <span class="basket-icon-shell">
+          <svg class="basket-3d-icon" viewBox="0 0 64 58" aria-hidden="true">
+            <defs>
+              <linearGradient id="basketBodyGradient" x1="16" x2="48" y1="18" y2="54" gradientUnits="userSpaceOnUse">
+                <stop offset="0" stop-color="#45cbbd" />
+                <stop offset="0.58" stop-color="#109b90" />
+                <stop offset="1" stop-color="#0a746e" />
+              </linearGradient>
+              <linearGradient id="basketHandleGradient" x1="18" x2="46" y1="7" y2="25" gradientUnits="userSpaceOnUse">
+                <stop offset="0" stop-color="#c8f8ef" />
+                <stop offset="1" stop-color="#1caa9d" />
+              </linearGradient>
+              <linearGradient id="basketFrontLight" x1="18" x2="46" y1="28" y2="46" gradientUnits="userSpaceOnUse">
+                <stop offset="0" stop-color="rgba(255,255,255,0.72)" />
+                <stop offset="1" stop-color="rgba(255,255,255,0.08)" />
+              </linearGradient>
+            </defs>
+            <path class="basket-shadow" d="M14 48c5 5 31 7 38 0 1-1 2-3 1-5H11c0 2 1 4 3 5Z" />
+            <path class="basket-handle" d="M19 25C20 10 44 10 45 25" />
+            <path class="basket-rim" d="M12 23h40l-4 7H16l-4-7Z" />
+            <path class="basket-body" d="M16 29h32l-4 20H20l-4-20Z" />
+            <path class="basket-highlight" d="M20 32h23l-2 6H21l-1-6Z" />
+            <path class="basket-weave" d="M24 29l3 20M32 29v20M40 29l-3 20M18 37h28M19 44h26" />
+          </svg>
+        </span>
+        <strong>试题栏</strong>
+        <span v-if="cartCount > 0" class="cart-count-badge">{{ cartCount }}</span>
+      </button>
+    </div>
 
     <a-drawer v-model:open="detailOpen" title="题目详情" width="760">
       <a-spin :spinning="detailLoading">
@@ -106,7 +197,7 @@
             <img v-if="detailImageUrl" class="detail-image" :src="detailImageUrl" alt="题目配图预览" />
             <a-alert v-else-if="currentQuestion.imageText" type="warning" show-icon message="图片不存在或无法预览" />
           </section>
-          <section class="detail-section">
+          <section v-if="currentQuestion.options.length && isChoiceQuestion(currentQuestion.questionType)" class="detail-section">
             <h3>选项</h3>
             <div class="detail-options">
               <div v-for="option in currentQuestion.options" :key="option.optionKey">
@@ -147,7 +238,7 @@
 import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { message } from 'ant-design-vue'
 import { useRouter } from 'vue-router'
-import { ShoppingCart } from 'lucide-vue-next'
+import { ShoppingBasket } from 'lucide-vue-next'
 import MathText from '../components/MathText.vue'
 import type { Question, QuestionCategory, QuestionQueryFilters } from '../api/native'
 import { getQuestion, listCategories, queryQuestions, readAssetDataUrl } from '../api/native'
@@ -175,19 +266,13 @@ const filters = reactive<QuestionQueryFilters>({
   tag: '',
   knowledgePoint: ''
 })
-const columns = [
-  { title: '标题', dataIndex: 'title', key: 'title', width: 320 },
-  { title: '题型', key: 'questionType', width: 96 },
-  { title: '难度', key: 'difficulty', width: 130 },
-  { title: '年份', dataIndex: 'year', width: 88 },
-  { title: '题号', dataIndex: 'questionNo', width: 100 },
-  { title: '分类', key: 'category', width: 150 },
-  { title: '标签', key: 'tags', width: 190 },
-  { title: '知识点', key: 'knowledgePoints', width: 230 },
-  { title: '操作', key: 'action', width: 160, fixed: 'right' }
-]
 const cartIdSet = computed(() => new Set(cartIds.value))
 const cartCount = computed(() => cartIds.value.length)
+const cartQuestions = computed(() => questions.value.filter((question) => cartIdSet.value.has(question.id)))
+const cartKnownCount = computed(() => cartQuestions.value.length)
+const cartUnknownCount = computed(() => Math.max(0, cartCount.value - cartKnownCount.value))
+const cartTypeStats = computed(() => buildStats(cartQuestions.value.map((question) => question.questionType || '未设置')))
+const cartDifficultyStats = computed(() => buildStats(cartQuestions.value.map((question) => formatDifficultyText(question.difficulty))))
 
 onMounted(async () => {
   refreshPaperCart()
@@ -250,11 +335,15 @@ function refreshPaperCart() {
 function addToPaperCart(id: number) {
   addQuestionToPaperCart(id)
   refreshPaperCart()
-  message.success('已加入试卷')
+  message.success('已加入试题栏')
 }
 
 function openPaperAssemble() {
   router.push('/app/questions/paper-assemble')
+}
+
+function openQuestionExport(id: number) {
+  router.push(`/question-export/${id}`)
 }
 
 async function openDetail(id: number) {
@@ -285,6 +374,30 @@ function formatDifficulty(difficulty: number) {
   const score = Math.max(0, Math.min(5, Math.trunc(difficulty || 0)))
   return `${'★'.repeat(score)}${'☆'.repeat(5 - score)}`
 }
+
+function formatDifficultyText(difficulty: number) {
+  if (!difficulty || difficulty <= 0) return '未设置'
+  return formatDifficulty(difficulty)
+}
+
+function formatDate(value: string) {
+  if (!value) return '-'
+  return value.slice(0, 10)
+}
+
+function buildStats(names: string[]) {
+  const countMap = new Map<string, number>()
+  names.forEach((name) => countMap.set(name, (countMap.get(name) || 0) + 1))
+  return Array.from(countMap.entries()).map(([name, count]) => ({
+    name,
+    count,
+    percent: names.length ? Math.round((count / names.length) * 100) : 0
+  }))
+}
+
+function isChoiceQuestion(questionType: string) {
+  return questionType === '单选题' || questionType === '多选题'
+}
 </script>
 
 <style scoped>
@@ -309,31 +422,35 @@ function formatDifficulty(difficulty: number) {
 
 .query-form {
   display: grid;
-  grid-template-columns: 300px 300px 140px;
-  width: fit-content;
+  grid-template-columns: repeat(16, minmax(0, 1fr));
+  width: 100%;
   max-width: 100%;
   gap: 10px 14px;
   align-items: end;
-  justify-content: start;
 }
 
 .query-form-item {
   margin-bottom: 0;
-  width: 300px;
+  width: auto;
   min-width: 0;
+  grid-column: span 3;
+}
+
+.query-form-title {
+  grid-column: span 5;
 }
 
 .query-form-year {
-  width: 140px;
+  grid-column: span 2;
 }
 
 .query-form-tag,
 .query-form-knowledge {
-  width: 300px;
+  grid-column: span 3;
 }
 
 .query-form-actions {
-  width: auto;
+  grid-column: span 3;
   margin-bottom: 0;
 }
 
@@ -398,10 +515,6 @@ function formatDifficulty(difficulty: number) {
   height: 30px;
 }
 
-.query-form-title {
-  grid-column: span 1;
-}
-
 .query-button {
   min-width: 56px;
 }
@@ -417,46 +530,204 @@ function formatDifficulty(difficulty: number) {
   width: 100%;
 }
 
-.query-table {
+.query-result {
   min-height: 0;
+  padding: 14px;
   overflow: auto;
 }
 
-.query-table :deep(.ant-table) {
-  color: #273244;
+.result-head {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
 }
 
-.query-table :deep(.ant-table-thead > tr > th) {
-  color: #334155;
-  font-weight: 800;
+.result-head strong {
+  color: #263447;
+  font-size: 16px;
+}
+
+.question-list {
+  display: grid;
+  gap: 14px;
+}
+
+.question-result-card {
+  display: grid;
+  gap: 16px;
+  padding: 22px 26px 18px;
   background: #ffffff;
+  border: 1px solid #dfe5ec;
+  border-radius: 8px;
+  box-shadow: 0 8px 20px rgba(39, 50, 68, 0.04);
+  transition: border-color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease;
 }
 
-.query-table :deep(.ant-table-thead > tr > th),
-.query-table :deep(.ant-table-tbody > tr > td) {
-  padding: 12px 14px;
-  font-size: 14px;
+.question-result-card.selected {
+  background: #f2fbf9;
+  border-color: #87d8ce;
+  box-shadow: 0 10px 24px rgba(15, 145, 135, 0.10);
 }
 
-.query-table :deep(.ant-table-tbody > tr > td) {
-  vertical-align: middle;
+.question-card-main {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 14px;
 }
 
-.query-title-cell {
-  display: block;
-  max-width: 300px;
-  overflow: hidden;
-  color: #253142;
-  font-weight: 700;
-  line-height: 1.6;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.difficulty-text {
-  color: #d97a00;
+.question-order {
+  color: #263447;
+  font-size: 17px;
   font-weight: 800;
-  white-space: nowrap;
+  line-height: 1.9;
+  text-align: right;
+}
+
+.question-content {
+  min-width: 0;
+}
+
+.question-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.question-title-row strong {
+  min-width: 0;
+  color: #2388e8;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.6;
+}
+
+.source-badge {
+  flex: 0 0 auto;
+  color: #2388e8;
+  font-size: 16px;
+  font-weight: 800;
+}
+
+.question-stem {
+  color: #273244;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.9;
+}
+
+.question-stem :deep(.math-text) {
+  min-width: 0;
+}
+
+.option-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 12px 24px;
+  margin-top: 20px;
+}
+
+.option-item {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+  color: #303b4d;
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.option-item strong {
+  flex: 0 0 auto;
+  font-style: italic;
+}
+
+.option-item :deep(.math-text) {
+  min-width: 0;
+}
+
+.question-card-foot {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px 14px;
+  padding-top: 12px;
+  border-top: 1px solid #e8edf3;
+}
+
+.question-meta,
+.question-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  align-items: center;
+  min-width: 0;
+  color: #8792a2;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.question-tags {
+  grid-column: 1;
+  gap: 8px;
+}
+
+.question-tags span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 9px;
+  color: #385dd6;
+  background: #eef1ff;
+  border: 1px solid #cbd6ff;
+  border-radius: 999px;
+}
+
+.question-tags .tag-cyan {
+  color: #0f8f83;
+  background: #eefaf8;
+  border-color: #cdeee8;
+}
+
+.question-actions {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: end;
+  justify-content: flex-end;
+}
+
+.question-actions :deep(.ant-btn-link) {
+  color: #2388e8;
+  font-weight: 800;
+}
+
+.cart-add-button {
+  min-width: 78px;
+  color: #ffffff;
+  font-weight: 900;
+  background: #0f9187;
+  border-color: #0f9187;
+  border-radius: 6px;
+  box-shadow: 0 6px 14px rgba(15, 145, 135, 0.18);
+}
+
+.cart-add-button:not(:disabled):hover {
+  color: #ffffff;
+  background: #0b8279;
+  border-color: #0b8279;
+}
+
+.cart-add-button.added,
+.cart-add-button.added:disabled {
+  color: #0f6f68;
+  background: #dff8f4;
+  border-color: #9ddfd7;
+  box-shadow: none;
+  opacity: 1;
 }
 
 .detail-section {
@@ -515,31 +786,265 @@ function formatDifficulty(difficulty: number) {
   border-radius: 6px;
 }
 
-.paper-cart-button {
+.paper-cart-float {
   position: fixed;
   right: 34px;
   bottom: 34px;
   z-index: 30;
+}
+
+.cart-analysis-panel {
+  position: absolute;
+  right: 78px;
+  bottom: 0;
+  width: 340px;
+  padding: 20px;
+  pointer-events: none;
+  visibility: hidden;
+  background: #ffffff;
+  border: 1px solid #dcefeb;
+  border-radius: 8px;
+  box-shadow: 0 18px 44px rgba(15, 145, 135, 0.16);
+  opacity: 0;
+  transform: translateX(10px) scale(0.98);
+  transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s ease;
+}
+
+.paper-cart-float:hover .cart-analysis-panel {
+  pointer-events: auto;
+  visibility: visible;
+  opacity: 1;
+  transform: translateX(0) scale(1);
+}
+
+.analysis-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 12px;
+  border-bottom: 3px solid #0f9187;
+}
+
+.analysis-title strong {
+  color: #0f9187;
+  font-size: 17px;
+}
+
+.analysis-title span {
+  color: #263447;
+  font-weight: 800;
+}
+
+.analysis-summary {
   display: grid;
-  width: 58px;
-  height: 58px;
-  color: #ffffff;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.analysis-summary div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px;
+  text-align: center;
+  background: #f5fbfa;
+  border: 1px solid #dcefeb;
+  border-radius: 8px;
+}
+
+.analysis-summary strong {
+  color: #0f9187;
+  font-size: 22px;
+  line-height: 1;
+}
+
+.analysis-summary span {
+  color: #6b7788;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.analysis-section {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.analysis-section h3 {
+  margin: 0;
+  color: #263447;
+  font-size: 14px;
+}
+
+.stat-row {
+  display: grid;
+  grid-template-columns: 86px minmax(0, 1fr) 28px;
+  gap: 10px;
+  align-items: center;
+  color: #536173;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.stat-row > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.stat-row div {
+  height: 8px;
+  overflow: hidden;
+  background: #edf2f7;
+  border-radius: 999px;
+}
+
+.stat-row i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #35b8aa, #0f9187);
+  border-radius: inherit;
+}
+
+.stat-row em {
+  color: #263447;
+  font-style: normal;
+  text-align: right;
+}
+
+.paper-cart-button {
+  position: relative;
+  display: grid;
+  width: 76px;
+  min-height: 88px;
+  padding: 10px 7px 9px;
+  color: #0f9187;
   cursor: pointer;
+  gap: 5px;
   place-items: center;
-  background: #0f9187;
-  border: 0;
-  border-radius: 50%;
-  box-shadow: 0 12px 28px rgba(15, 145, 135, 0.28);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(237, 251, 248, 0.96)),
+    radial-gradient(circle at 50% 0, rgba(132, 224, 211, 0.32), transparent 58%);
+  border: 1px solid #cfebe6;
+  border-radius: 8px;
+  box-shadow:
+    0 18px 34px rgba(15, 145, 135, 0.20),
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    inset 0 -8px 18px rgba(15, 145, 135, 0.08);
+  transition: color 0.18s ease, background 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+}
+
+.paper-cart-button::before {
+  position: absolute;
+  inset: 8px 10px auto;
+  height: 22px;
+  pointer-events: none;
+  content: "";
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.75), rgba(255, 255, 255, 0));
+  border-radius: 999px;
 }
 
 .paper-cart-button:hover {
-  background: #0b8279;
+  color: #0b8279;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(225, 249, 245, 0.98)),
+    radial-gradient(circle at 50% 0, rgba(107, 213, 198, 0.38), transparent 60%);
+  box-shadow:
+    0 22px 42px rgba(15, 145, 135, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -9px 20px rgba(15, 145, 135, 0.10);
+  transform: translateY(-4px);
 }
 
-.paper-cart-button span {
+.paper-cart-button:active {
+  transform: translateY(-1px) scale(0.98);
+}
+
+.basket-icon-shell {
+  display: grid;
+  width: 46px;
+  height: 42px;
+  place-items: center;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(255, 255, 255, 0.9), rgba(255, 255, 255, 0) 36%),
+    linear-gradient(180deg, #e8fbf7, #c4f0e9);
+  border: 1px solid #a4e1d9;
+  border-radius: 14px;
+  box-shadow:
+    0 10px 16px rgba(15, 145, 135, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.92),
+    inset 0 -7px 13px rgba(15, 145, 135, 0.10);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.paper-cart-button:hover .basket-icon-shell {
+  box-shadow:
+    0 13px 20px rgba(15, 145, 135, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -8px 15px rgba(15, 145, 135, 0.12);
+  transform: translateY(-2px) rotate(-2deg) scale(1.05);
+}
+
+.basket-3d-icon {
+  display: block;
+  width: 38px;
+  height: 34px;
+  overflow: visible;
+}
+
+.basket-shadow {
+  fill: rgba(4, 92, 86, 0.22);
+  filter: blur(0.2px);
+}
+
+.basket-handle {
+  fill: none;
+  stroke: url("#basketHandleGradient");
+  stroke-width: 6;
+  stroke-linecap: round;
+}
+
+.basket-rim {
+  fill: #31bdb0;
+  stroke: #06766f;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.basket-body {
+  fill: url("#basketBodyGradient");
+  stroke: #06766f;
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+
+.basket-highlight {
+  fill: url("#basketFrontLight");
+}
+
+.basket-weave {
+  fill: none;
+  stroke: rgba(232, 255, 251, 0.72);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+}
+
+.paper-cart-button:hover .basket-3d-icon {
+  animation: basket-breathe 0.72s ease both;
+}
+
+.paper-cart-button strong {
+  color: #536173;
+  font-size: 14px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.cart-count-badge {
   position: absolute;
-  top: -6px;
-  right: -4px;
+  top: -8px;
+  right: -8px;
   display: grid;
   min-width: 24px;
   height: 24px;
@@ -551,22 +1056,47 @@ function formatDifficulty(difficulty: number) {
   background: #e34b63;
   border: 2px solid #ffffff;
   border-radius: 999px;
+  box-shadow: 0 6px 12px rgba(227, 75, 99, 0.22);
+}
+
+@keyframes basket-breathe {
+  0% {
+    transform: translateY(0) scale(1);
+  }
+
+  45% {
+    transform: translateY(-2px) scale(1.06);
+  }
+
+  100% {
+    transform: translateY(0) scale(1);
+  }
 }
 
 @media (max-width: 1180px) {
   .query-form {
-    grid-template-columns: 1fr 1fr 140px;
+    grid-template-columns: repeat(8, minmax(0, 1fr));
     width: 100%;
   }
 
-  .query-form-item,
-  .query-form-tag,
-  .query-form-knowledge {
-    width: 100%;
+  .query-form-item {
+    grid-column: span 4;
+  }
+
+  .query-form-title {
+    grid-column: span 5;
   }
 
   .query-form-year {
-    width: 140px;
+    grid-column: span 3;
+  }
+
+  .query-form-actions {
+    grid-column: span 3;
+  }
+
+  .option-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
@@ -577,8 +1107,42 @@ function formatDifficulty(difficulty: number) {
   }
 
   .query-form-item,
-  .query-form-year {
+  .query-form-year,
+  .query-form-actions {
+    grid-column: 1;
     width: 100%;
+  }
+
+  .question-card-foot,
+  .question-actions {
+    grid-template-columns: 1fr;
+    grid-column: 1;
+    grid-row: auto;
+    justify-content: flex-start;
+  }
+
+  .cart-analysis-panel {
+    right: 0;
+    bottom: 92px;
+    width: min(340px, calc(100vw - 48px));
+  }
+}
+
+@media (max-width: 640px) {
+  .question-result-card {
+    padding: 16px;
+  }
+
+  .question-card-main {
+    grid-template-columns: 1fr;
+  }
+
+  .question-order {
+    text-align: left;
+  }
+
+  .option-grid {
+    grid-template-columns: 1fr;
   }
 }
 

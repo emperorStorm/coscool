@@ -102,7 +102,7 @@
             <BoardEditor v-if="boardVisible" class="board-section" @save="handleBoardSave" />
           </div>
 
-          <div class="option-section">
+          <div v-if="isChoiceQuestion" class="option-section">
             <div
               v-for="option in questionForm.options"
               :key="option.optionKey"
@@ -125,7 +125,12 @@
               <label>知识点</label>
               <a-button size="small">历史数据</a-button>
             </div>
-            <a-select v-model:value="questionForm.knowledgePoints" mode="tags" placeholder="知识点，一行一个" />
+            <a-select
+              v-model:value="questionForm.knowledgePoints"
+              mode="tags"
+              placeholder="知识点，可输入多个"
+              :token-separators="tagSeparators"
+            />
           </div>
 
           <div class="entry-card">
@@ -133,7 +138,12 @@
               <label>标签</label>
               <a-button size="small">历史数据</a-button>
             </div>
-            <a-select v-model:value="questionForm.tags" mode="tags" placeholder="标签，一行一个" />
+            <a-select
+              v-model:value="questionForm.tags"
+              mode="tags"
+              placeholder="标签，可输入多个"
+              :token-separators="tagSeparators"
+            />
           </div>
 
           <div class="entry-card">
@@ -141,7 +151,7 @@
               <label>答案（结果）</label>
               <a-space>
                 <a-button size="small">替换</a-button>
-                <a-button v-for="option in questionForm.options" :key="option.optionKey" size="small">
+                <a-button v-for="option in choiceOptions" :key="option.optionKey" size="small">
                   {{ option.optionKey }}
                 </a-button>
               </a-space>
@@ -166,8 +176,8 @@
             <MathText class="preview-question-text" :content="questionForm.stem || '题目内容预览'" />
             <img v-if="questionImageUrl" class="preview-image" :src="questionImageUrl" alt="题目配图预览" />
             <p v-else-if="questionForm.imageText" class="muted">{{ questionForm.imageText }}</p>
-            <div class="preview-options">
-              <div v-for="option in questionForm.options" :key="option.optionKey" class="preview-option-item">
+            <div v-if="isChoiceQuestion" class="preview-options">
+              <div v-for="option in choiceOptions" :key="option.optionKey" class="preview-option-item">
                 <strong>{{ option.optionKey }}.</strong>
                 <MathText :content="option.content || '未填写'" />
               </div>
@@ -208,7 +218,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { message } from 'ant-design-vue'
 import { open } from '@tauri-apps/plugin-dialog'
 import { useRoute, useRouter } from 'vue-router'
@@ -236,7 +246,11 @@ const selectedCategoryId = ref<number | undefined>()
 const questionImageUrl = ref('')
 const questionForm = reactive<QuestionPayload>(createEmptyQuestion())
 const questionTypeOptions = ['单选题', '多选题', '填空题', '证明题', '计算题', '解答题']
+const choiceQuestionTypes = ['单选题', '多选题']
 const difficultyStars = [1, 2, 3, 4, 5]
+const tagSeparators = [',', '，', ';', '；', '\n']
+const isChoiceQuestion = computed(() => choiceQuestionTypes.includes(questionForm.questionType))
+const choiceOptions = computed(() => (isChoiceQuestion.value ? questionForm.options : []))
 
 onMounted(async () => {
   await ensureLibrary()
@@ -246,6 +260,15 @@ onMounted(async () => {
 watch(
   () => questionForm.imageText,
   () => loadQuestionImage()
+)
+
+watch(
+  () => questionForm.questionType,
+  () => {
+    if (isChoiceQuestion.value && questionForm.options.length === 0) {
+      questionForm.options = createDefaultOptions()
+    }
+  }
 )
 
 function createEmptyQuestion(): QuestionPayload {
@@ -261,15 +284,19 @@ function createEmptyQuestion(): QuestionPayload {
     answer: '',
     analysis: '',
     createdBy: 'yaoyao',
-    options: [
-      { optionKey: 'A', content: '', sortOrder: 1 },
-      { optionKey: 'B', content: '', sortOrder: 2 },
-      { optionKey: 'C', content: '', sortOrder: 3 },
-      { optionKey: 'D', content: '', sortOrder: 4 }
-    ],
+    options: createDefaultOptions(),
     tags: [],
     knowledgePoints: []
   }
+}
+
+function createDefaultOptions() {
+  return [
+    { optionKey: 'A', content: '', sortOrder: 1 },
+    { optionKey: 'B', content: '', sortOrder: 2 },
+    { optionKey: 'C', content: '', sortOrder: 3 },
+    { optionKey: 'D', content: '', sortOrder: 4 }
+  ]
 }
 
 async function ensureLibrary() {
@@ -344,7 +371,7 @@ async function submitQuestion() {
   }
   savingQuestion.value = true
   try {
-    await saveQuestion(questionForm)
+    await saveQuestion(buildQuestionPayload())
     await categoryTreeRef.value?.load()
     message.success('题目已保存')
     await router.replace('/app/questions/entry')
@@ -357,6 +384,27 @@ async function submitQuestion() {
 
 function goBack() {
   router.replace('/app/questions/entry')
+}
+
+function buildQuestionPayload(): QuestionPayload {
+  return {
+    ...questionForm,
+    options: isChoiceQuestion.value ? questionForm.options : [],
+    tags: normalizeNameList(questionForm.tags),
+    knowledgePoints: normalizeNameList(questionForm.knowledgePoints)
+  }
+}
+
+function normalizeNameList(items: string[]) {
+  const nameSet = new Set<string>()
+  items.forEach((item) => {
+    item
+      .split(/[,，;；\n]/)
+      .map((name) => name.trim())
+      .filter(Boolean)
+      .forEach((name) => nameSet.add(name))
+  })
+  return Array.from(nameSet)
 }
 
 async function addImage() {

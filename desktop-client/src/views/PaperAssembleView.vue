@@ -3,58 +3,70 @@
     <header class="assemble-toolbar">
       <div>
         <h2 class="page-title">组装试卷</h2>
-        <span class="muted">已加入 {{ questions.length }} 道题</span>
+        <span class="muted">试题栏已加入 {{ questions.length }} 道题，可直接在试卷中调整顺序</span>
       </div>
-      <a-space>
+      <a-space wrap>
         <a-button @click="goQuery">继续选题</a-button>
-        <a-popconfirm title="确认清空购物车？" @confirm="clearCart">
+        <a-popconfirm title="确认清空试题栏？" @confirm="clearCart">
           <a-button danger :disabled="questions.length === 0">清空</a-button>
         </a-popconfirm>
-        <a-button type="primary" :disabled="questions.length === 0" @click="openGenerateDialog">生成试卷</a-button>
+        <a-button type="primary" :disabled="questions.length === 0" @click="openGenerateDialog">
+          生成试卷
+        </a-button>
       </a-space>
     </header>
 
     <main class="assemble-main">
-      <section class="selected-panel work-panel">
-        <div class="panel-head">
-          <strong>已选题目</strong>
-          <span class="muted">可调整顺序或删除</span>
-        </div>
-        <a-spin :spinning="loading">
-          <a-empty v-if="questions.length === 0" description="暂无已选题目" />
-          <div v-else class="selected-list">
-            <article v-for="(question, index) in questions" :key="question.id" class="selected-item">
-              <span class="question-index">{{ index + 1 }}</span>
-              <div class="question-summary">
-                <strong>{{ question.title || '未命名题目' }}</strong>
-                <span>{{ question.questionType || '未设置题型' }} / {{ question.year || '未设置年份' }}</span>
+      <a-spin :spinning="loading">
+        <section class="editable-paper">
+          <input
+            v-model="paperForm.title"
+            class="paper-title-input"
+            maxlength="80"
+            placeholder="请输入试卷标题"
+          />
+
+          <a-empty v-if="questions.length === 0" description="暂无已选题目" class="paper-empty" />
+
+          <div v-else class="paper-question-list">
+            <article v-for="(question, index) in questions" :key="question.id" class="paper-question">
+              <div class="question-title">
+                <strong>{{ index + 1 }}.</strong>
+                <MathText :content="question.stem || question.title || '暂无题干'" />
               </div>
-              <a-space>
-                <a-button size="small" :disabled="index === 0" @click="moveQuestion(index, -1)">上移</a-button>
-                <a-button size="small" :disabled="index === questions.length - 1" @click="moveQuestion(index, 1)">下移</a-button>
-                <a-button size="small" danger @click="removeQuestion(question.id)">删除</a-button>
-              </a-space>
+              <img v-if="questionImageMap[question.id]" class="question-image" :src="questionImageMap[question.id]" alt="题目配图" />
+              <p v-else-if="question.imageText" class="image-placeholder">{{ question.imageText }}</p>
+              <div v-if="question.options.length && isChoiceQuestion(question.questionType)" class="option-grid">
+                <div v-for="option in question.options" :key="option.optionKey" class="option-item">
+                  <strong>{{ option.optionKey }}.</strong>
+                  <MathText :content="option.content || '-'" />
+                </div>
+              </div>
+              <div class="question-edit-bar">
+                <div class="question-meta">
+                  <span>{{ question.questionType || '未设置题型' }}</span>
+                  <span>{{ formatDifficultyText(question.difficulty) }}</span>
+                  <span v-if="question.year">{{ question.year }}</span>
+                </div>
+                <a-space :size="8" wrap>
+                  <a-button size="small" :disabled="index === 0" @click="moveQuestion(index, -1)">上移</a-button>
+                  <a-button size="small" :disabled="index === questions.length - 1" @click="moveQuestion(index, 1)">下移</a-button>
+                  <a-button size="small" danger @click="removeQuestion(question.id)">删除</a-button>
+                </a-space>
+              </div>
             </article>
           </div>
-        </a-spin>
-      </section>
-
-      <section class="preview-panel">
-        <div class="panel-head preview-head">
-          <strong>试卷预览</strong>
-          <span class="muted">预览不包含答案和解析</span>
-        </div>
-        <PaperPreview :title="previewTitle" :questions="questions" :image-map="questionImageMap" />
-      </section>
+        </section>
+      </a-spin>
     </main>
 
     <a-modal v-model:open="generateDialogOpen" title="生成试卷" :confirm-loading="saving" @ok="generatePaper">
       <a-form layout="vertical">
         <a-form-item label="试卷名称" required>
-          <a-input v-model:value="paperForm.title" placeholder="请输入试卷名称" />
+          <a-input v-model:value="generateForm.title" placeholder="请输入试卷名称" />
         </a-form-item>
         <a-form-item label="备注">
-          <a-textarea v-model:value="paperForm.remark" :rows="4" placeholder="请输入备注" />
+          <a-textarea v-model:value="generateForm.remark" :rows="4" placeholder="请输入备注" />
         </a-form-item>
       </a-form>
     </a-modal>
@@ -62,10 +74,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { message } from 'ant-design-vue'
 import { useRouter } from 'vue-router'
-import PaperPreview from '../components/PaperPreview.vue'
+import MathText from '../components/MathText.vue'
 import type { Question } from '../api/native'
 import { getQuestionsByIds, readAssetDataUrl, savePaper } from '../api/native'
 import {
@@ -82,12 +94,17 @@ const generateDialogOpen = ref(false)
 const questions = ref<Question[]>([])
 const questionImageMap = ref<Record<number, string>>({})
 const paperForm = reactive({
+  title: ''
+})
+const generateForm = reactive({
   title: '',
   remark: ''
 })
-const previewTitle = computed(() => paperForm.title || '课思库试卷')
 
-onMounted(loadCartQuestions)
+onMounted(async () => {
+  paperForm.title = `试卷-${formatMinuteTimestamp()}`
+  await loadCartQuestions()
+})
 
 async function loadCartQuestions() {
   const ids = getPaperCartIds()
@@ -102,7 +119,7 @@ async function loadCartQuestions() {
     const validIds = questions.value.map((item) => item.id)
     if (validIds.length !== ids.length) {
       setPaperCartIds(validIds)
-      message.warning('部分题目已不存在，已从购物车移除')
+      message.warning('部分题目已不存在，已从试题栏移除')
     }
     await loadQuestionImages()
   } catch (error) {
@@ -140,6 +157,8 @@ function moveQuestion(index: number, step: number) {
 
 function removeQuestion(id: number) {
   questions.value = questions.value.filter((question) => question.id !== id)
+  const { [id]: _removed, ...nextImageMap } = questionImageMap.value
+  questionImageMap.value = nextImageMap
   removeQuestionFromPaperCart(id)
 }
 
@@ -147,25 +166,29 @@ function clearCart() {
   questions.value = []
   questionImageMap.value = {}
   clearPaperCart()
-  message.success('购物车已清空')
+  message.success('试题栏已清空')
 }
 
 function openGenerateDialog() {
-  paperForm.title = `试卷-${formatMinuteTimestamp()}`
-  paperForm.remark = ''
+  generateForm.title = paperForm.title.trim() || `试卷-${formatMinuteTimestamp()}`
+  generateForm.remark = ''
   generateDialogOpen.value = true
 }
 
 async function generatePaper() {
-  if (!paperForm.title.trim()) {
+  if (!generateForm.title.trim()) {
     message.warning('请输入试卷名称')
+    return
+  }
+  if (!questions.value.length) {
+    message.warning('请先加入题目')
     return
   }
   saving.value = true
   try {
     await savePaper({
-      title: paperForm.title.trim(),
-      remark: paperForm.remark.trim(),
+      title: generateForm.title.trim(),
+      remark: generateForm.remark.trim(),
       createdBy: getCurrentTeacherName(),
       questions: questions.value.map((question, index) => ({
         questionId: question.id,
@@ -205,6 +228,16 @@ function formatMinuteTimestamp() {
   const pad = (value: number) => String(value).padStart(2, '0')
   return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}${pad(date.getHours())}${pad(date.getMinutes())}`
 }
+
+function isChoiceQuestion(questionType: string) {
+  return questionType === '单选题' || questionType === '多选题'
+}
+
+function formatDifficultyText(difficulty: number) {
+  if (!difficulty || difficulty <= 0) return '未设置难度'
+  const score = Math.max(0, Math.min(5, Math.trunc(difficulty)))
+  return `${'★'.repeat(score)}${'☆'.repeat(5 - score)}`
+}
 </script>
 
 <style scoped>
@@ -226,95 +259,175 @@ function formatMinuteTimestamp() {
 }
 
 .assemble-main {
+  min-width: 0;
+  padding-bottom: 34px;
+}
+
+.editable-paper {
+  width: min(1040px, 100%);
+  min-height: 1180px;
+  margin: 0 auto;
+  padding: 46px 58px 64px;
+  color: #1f2937;
+  background: #ffffff;
+  border: 1px solid #dfe8f4;
+  border-radius: 8px;
+  box-shadow: 0 18px 42px rgba(42, 60, 84, 0.10);
+}
+
+.paper-title-input {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0 16px 14px;
+  color: #111827;
+  font-size: 26px;
+  font-weight: 900;
+  line-height: 1.4;
+  text-align: center;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid #0f9187;
+  outline: none;
+}
+
+.paper-title-input:focus {
+  border-bottom-color: #0f9187;
+}
+
+.paper-empty {
+  margin-top: 70px;
+}
+
+.paper-question-list {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 14px;
+  gap: 28px;
+  margin-top: 34px;
 }
 
-.selected-panel {
-  padding: 16px;
-}
-
-.panel-head {
-  display: flex;
-  gap: 12px;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 14px;
-}
-
-.panel-head strong {
-  color: #263447;
-  font-size: 16px;
-}
-
-.selected-list {
-  display: grid;
-  gap: 10px;
-}
-
-.selected-item {
-  display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: center;
-  padding: 12px;
-  background: #f8fafc;
-  border: 1px solid #e4ebf2;
+.paper-question {
+  padding: 20px 24px 14px;
+  page-break-inside: avoid;
+  border: 1px solid transparent;
   border-radius: 8px;
 }
 
-.question-index {
-  display: grid;
-  width: 30px;
-  height: 30px;
-  color: #0f9187;
-  font-weight: 900;
-  place-items: center;
-  background: #e9fbf8;
-  border: 1px solid #b9e8e1;
+.paper-question:hover {
+  border-color: #87d8ce;
+}
+
+.question-title {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  color: #1f2937;
+  font-size: 17px;
+  font-weight: 800;
+  line-height: 1.9;
+}
+
+.question-title > strong {
+  flex: 0 0 auto;
+  min-width: 24px;
+}
+
+.question-title :deep(.math-text) {
+  min-width: 0;
+}
+
+.question-image {
+  display: block;
+  max-width: 100%;
+  max-height: 280px;
+  margin: 14px 0 0 34px;
+  object-fit: contain;
+  border: 1px solid #e5e7eb;
   border-radius: 6px;
 }
 
-.question-summary {
-  min-width: 0;
-}
-
-.question-summary strong,
-.question-summary span {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.question-summary strong {
-  color: #263447;
-}
-
-.question-summary span {
-  margin-top: 4px;
-  color: #8190a2;
+.image-placeholder {
+  margin: 12px 0 0 34px;
+  color: #8792a2;
   font-size: 13px;
 }
 
-.preview-panel {
+.option-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 34px;
+  margin: 18px 0 0 34px;
+}
+
+.option-item {
+  display: flex;
+  gap: 8px;
   min-width: 0;
-  padding-bottom: 30px;
+  color: #273244;
+  font-size: 15px;
+  line-height: 1.7;
 }
 
-.preview-head {
-  max-width: 800px;
-  margin-right: auto;
-  margin-left: auto;
+.option-item strong {
+  flex: 0 0 auto;
+  font-style: italic;
 }
 
-@media (max-width: 860px) {
+.option-item :deep(.math-text) {
+  min-width: 0;
+}
+
+.question-edit-bar {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  justify-content: space-between;
+  margin: 24px 0 0 34px;
+  padding-top: 14px;
+  border-top: 1px solid #edf1f5;
+}
+
+.question-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  min-width: 0;
+}
+
+.question-meta span {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 9px;
+  color: #0f8f83;
+  font-size: 12px;
+  font-weight: 800;
+  background: #eefaf8;
+  border: 1px solid #cdeee8;
+  border-radius: 999px;
+}
+
+@media (max-width: 900px) {
   .assemble-toolbar,
-  .selected-item {
+  .question-edit-bar {
     align-items: stretch;
-    grid-template-columns: 1fr;
     flex-direction: column;
+  }
+
+  .editable-paper {
+    min-height: auto;
+    padding: 32px 22px;
+  }
+
+  .option-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .question-image,
+  .image-placeholder,
+  .option-grid,
+  .question-edit-bar {
+    margin-left: 0;
   }
 }
 </style>

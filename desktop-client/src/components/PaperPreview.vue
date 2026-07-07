@@ -17,7 +17,7 @@
         </div>
         <img v-if="imageMap[question.id]" class="question-image" :src="imageMap[question.id]" alt="题目配图" />
         <p v-else-if="question.imageText" class="image-placeholder">{{ question.imageText }}</p>
-        <div v-if="question.options.length" class="option-grid">
+        <div v-if="question.options.length && isChoiceQuestion(question.questionType)" class="option-grid">
           <div v-for="option in question.options" :key="option.optionKey" class="option-item">
             <strong>{{ option.optionKey }}.</strong>
             <MathText :content="option.content || '-'" />
@@ -65,6 +65,10 @@ defineProps<{
   showKnowledgePoints?: boolean
   showTags?: boolean
 }>()
+
+function isChoiceQuestion(questionType: string) {
+  return questionType === '单选题' || questionType === '多选题'
+}
 </script>
 
 <style scoped>
