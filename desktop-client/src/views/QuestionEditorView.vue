@@ -33,6 +33,44 @@
 
       <section class="editor-content">
         <section class="editor-form-pane">
+          <div class="entry-card meta-card">
+            <div class="meta-field">
+              <label>题型</label>
+              <div class="question-type-buttons" role="radiogroup" aria-label="题型">
+                <button
+                  v-for="item in questionTypeOptions"
+                  :key="item"
+                  class="question-type-button"
+                  :class="{ active: questionForm.questionType === item }"
+                  type="button"
+                  role="radio"
+                  :aria-checked="questionForm.questionType === item"
+                  @click="questionForm.questionType = item"
+                >
+                  {{ item }}
+                </button>
+              </div>
+            </div>
+
+            <div class="meta-field difficulty-field">
+              <label>难度</label>
+              <div class="difficulty-stars" aria-label="难度">
+                <button
+                  v-for="star in difficultyStars"
+                  :key="star"
+                  class="difficulty-star"
+                  :class="{ active: star <= questionForm.difficulty }"
+                  type="button"
+                  :aria-label="`选择 ${star} 星难度`"
+                  :title="`${star} 星难度`"
+                  @click="setDifficulty(star)"
+                >
+                  {{ star <= questionForm.difficulty ? '★' : '☆' }}
+                </button>
+              </div>
+            </div>
+          </div>
+
           <div class="entry-card title-card">
             <label>标题</label>
             <a-input v-model:value="questionForm.title" placeholder="请输入..." />
@@ -121,6 +159,10 @@
           <div class="preview-paper">
             <span class="preview-label">题目</span>
             <h3>{{ questionForm.title || '未命名题目' }}</h3>
+            <div v-if="questionForm.questionType || questionForm.difficulty > 0" class="preview-meta">
+              <span v-if="questionForm.questionType">{{ questionForm.questionType }}</span>
+              <span v-if="questionForm.difficulty > 0">{{ formatDifficulty(questionForm.difficulty) }}</span>
+            </div>
             <MathText class="preview-question-text" :content="questionForm.stem || '题目内容预览'" />
             <img v-if="questionImageUrl" class="preview-image" :src="questionImageUrl" alt="题目配图预览" />
             <p v-else-if="questionForm.imageText" class="muted">{{ questionForm.imageText }}</p>
@@ -193,6 +235,8 @@ const categoryTreeRef = ref<InstanceType<typeof QuestionCategoryTree>>()
 const selectedCategoryId = ref<number | undefined>()
 const questionImageUrl = ref('')
 const questionForm = reactive<QuestionPayload>(createEmptyQuestion())
+const questionTypeOptions = ['单选题', '多选题', '填空题', '证明题', '计算题', '解答题']
+const difficultyStars = [1, 2, 3, 4, 5]
 
 onMounted(async () => {
   await ensureLibrary()
@@ -212,6 +256,8 @@ function createEmptyQuestion(): QuestionPayload {
     imageText: '',
     year: '',
     questionNo: '',
+    questionType: '',
+    difficulty: 0,
     answer: '',
     analysis: '',
     createdBy: 'yaoyao',
@@ -280,6 +326,15 @@ function addOption() {
     content: '',
     sortOrder: nextIndex + 1
   })
+}
+
+function setDifficulty(star: number) {
+  questionForm.difficulty = questionForm.difficulty === star ? 0 : star
+}
+
+function formatDifficulty(difficulty: number) {
+  const score = Math.max(0, Math.min(5, Math.trunc(difficulty || 0)))
+  return `${'★'.repeat(score)}${'☆'.repeat(5 - score)}`
 }
 
 async function submitQuestion() {
@@ -467,6 +522,68 @@ async function loadQuestionImage() {
   font-weight: 900;
 }
 
+.meta-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 220px;
+  gap: 14px;
+  align-items: start;
+}
+
+.meta-field {
+  min-width: 0;
+}
+
+.question-type-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.question-type-button {
+  height: 32px;
+  padding: 0 13px;
+  color: #526174;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  background: #f8fafc;
+  border: 1px solid #dce5ef;
+  border-radius: 6px;
+}
+
+.question-type-button.active,
+.question-type-button:hover {
+  color: #ffffff;
+  background: #3aa4ff;
+  border-color: #3aa4ff;
+}
+
+.difficulty-stars {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  min-height: 32px;
+}
+
+.difficulty-star {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: #aeb8c4;
+  font-size: 22px;
+  line-height: 1;
+  cursor: pointer;
+  place-items: center;
+  background: transparent;
+  border: 0;
+}
+
+.difficulty-star.active,
+.difficulty-star:hover {
+  color: #ff9f1c;
+}
+
 .card-head {
   display: flex;
   gap: 8px;
@@ -542,6 +659,24 @@ async function loadQuestionImage() {
   font-size: 18px;
 }
 
+.preview-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: -2px 0 12px;
+}
+
+.preview-meta span {
+  min-height: 24px;
+  padding: 2px 9px;
+  color: #607085;
+  font-size: 13px;
+  font-weight: 800;
+  background: #f3f6fa;
+  border: 1px solid #e1e8f0;
+  border-radius: 999px;
+}
+
 .preview-label {
   display: block;
   margin-bottom: 12px;
@@ -602,6 +737,10 @@ async function loadQuestionImage() {
   .preview-pane {
     padding-left: 0;
     border-left: 0;
+  }
+
+  .meta-card {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 </style>

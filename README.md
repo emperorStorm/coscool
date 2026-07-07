@@ -58,7 +58,7 @@ On the first visit to the question bank page, Coscool asks the user to choose a 
 - Teacher management, including account, password, name, phone, remark, and status.
 - Student management, including name, phone, grade, school, and remark.
 - Question category tree for organizing a personal question bank.
-- Question entry with title, stem, year, question number, options, answer, analysis, tags, and knowledge points.
+- Question entry with title, stem, year, question number, question type, difficulty, options, answer, analysis, tags, and knowledge points.
 - Question image import and local image preview.
 - Built-in annotation board based on Konva, with board JSON and preview assets saved locally.
 - Question list, keyword search, category filtering, and advanced query by year, tag, and knowledge point.

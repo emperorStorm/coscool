@@ -10,6 +10,7 @@
           <template #title>题库管理</template>
           <a-menu-item key="/app/questions/entry">题库录入</a-menu-item>
           <a-menu-item key="/app/questions/query">题库查询</a-menu-item>
+          <a-menu-item key="/app/questions/papers">试卷维护</a-menu-item>
         </a-sub-menu>
         <a-menu-item key="/app/teachers">教师管理</a-menu-item>
         <a-menu-item key="/app/students">学员管理</a-menu-item>
@@ -23,6 +24,7 @@
           <span class="muted"> 本地个人版</span>
         </div>
         <a-space>
+          <AppNotificationCenter />
           <span class="muted">{{ teacherName }}</span>
           <a-button @click="logout">退出</a-button>
         </a-space>
@@ -37,6 +39,7 @@
 <script setup lang="ts">
 import { computed, ref, watchEffect } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import AppNotificationCenter from '../components/AppNotificationCenter.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -57,6 +60,8 @@ const teacherName = computed(() => {
 const routeTitle = computed(() => {
   if (route.path.includes('/questions/entry')) return '题库录入'
   if (route.path.includes('/questions/query')) return '题库查询'
+  if (route.path.includes('/questions/papers')) return '试卷维护'
+  if (route.path.includes('/questions/paper-assemble')) return '组装试卷'
   if (route.path.includes('teachers')) return '教师管理'
   if (route.path.includes('students')) return '学员管理'
   if (route.path.includes('settings')) return '系统设置'

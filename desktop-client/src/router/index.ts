@@ -6,6 +6,8 @@ import StudentView from '../views/StudentView.vue'
 import QuestionBankView from '../views/QuestionBankView.vue'
 import QuestionEditorView from '../views/QuestionEditorView.vue'
 import QuestionQueryView from '../views/QuestionQueryView.vue'
+import PaperAssembleView from '../views/PaperAssembleView.vue'
+import PaperMaintenanceView from '../views/PaperMaintenanceView.vue'
 import SettingsView from '../views/SettingsView.vue'
 
 const router = createRouter({
@@ -15,6 +17,8 @@ const router = createRouter({
     { path: '/login', component: LoginView },
     { path: '/question-editor', component: QuestionEditorView, meta: { requiresAuth: true } },
     { path: '/question-editor/:id', component: QuestionEditorView, meta: { requiresAuth: true } },
+    { path: '/question-export/:id', component: () => import('../views/QuestionExportView.vue'), meta: { requiresAuth: true } },
+    { path: '/paper-export/:id', component: () => import('../views/PaperExportView.vue'), meta: { requiresAuth: true } },
     {
       path: '/app',
       component: MainLayout,
@@ -26,6 +30,8 @@ const router = createRouter({
         { path: 'questions', redirect: '/app/questions/entry' },
         { path: 'questions/entry', component: QuestionBankView },
         { path: 'questions/query', component: QuestionQueryView },
+        { path: 'questions/papers', component: PaperMaintenanceView },
+        { path: 'questions/paper-assemble', component: PaperAssembleView },
         { path: 'settings', component: SettingsView }
       ]
     }

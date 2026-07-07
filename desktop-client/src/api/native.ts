@@ -58,6 +58,8 @@ export interface Question {
   imageText: string
   year: string
   questionNo: string
+  questionType: string
+  difficulty: number
   answer: string
   analysis: string
   createdBy: string
@@ -68,6 +70,33 @@ export interface Question {
   knowledgePoints: string[]
 }
 
+export interface Paper {
+  id: number
+  title: string
+  remark: string
+  questionCount: number
+  createdBy: string
+  createdAt: string
+  updatedAt: string
+}
+
+export interface PaperQuestionPayload {
+  questionId: number
+  sortOrder: number
+}
+
+export interface PaperPayload {
+  title: string
+  remark: string
+  createdBy: string
+  questions: PaperQuestionPayload[]
+}
+
+export interface PaperDetail {
+  paper: Paper
+  questions: Question[]
+}
+
 export interface QuestionPayload {
   id?: number
   categoryId?: number
@@ -76,6 +105,8 @@ export interface QuestionPayload {
   imageText: string
   year: string
   questionNo: string
+  questionType: string
+  difficulty: number
   answer: string
   analysis: string
   createdBy: string
@@ -124,7 +155,7 @@ function invoke<T>(command: string, args?: Parameters<typeof tauriInvoke>[1]) {
   return tauriInvoke<T>(command, args)
 }
 
-function isTauriRuntime() {
+export function isTauriRuntime() {
   return typeof window !== 'undefined' && Boolean((window as Window & { __TAURI_INTERNALS__?: unknown }).__TAURI_INTERNALS__)
 }
 
@@ -220,6 +251,10 @@ export function getQuestion(id: number) {
   return invoke<Question>('question_get', { id })
 }
 
+export function getQuestionsByIds(ids: number[]) {
+  return invoke<Question[]>('question_batch_get', { ids })
+}
+
 export function saveQuestion(question: QuestionPayload) {
   return invoke<Question>('question_save', { question })
 }
@@ -240,6 +275,26 @@ export function exportQuestion(id: number) {
   return invoke<string>('export_question', { id })
 }
 
+export function saveExportFile(targetPath: string, dataUrl: string) {
+  return invoke<string>('save_export_file', { targetPath, dataUrl })
+}
+
 export function readAssetDataUrl(relativePath: string) {
   return invoke<AssetDataUrl>('read_asset_data_url', { relativePath })
+}
+
+export function listPapers() {
+  return invoke<Paper[]>('paper_list')
+}
+
+export function getPaper(id: number) {
+  return invoke<PaperDetail>('paper_get', { id })
+}
+
+export function savePaper(paper: PaperPayload) {
+  return invoke<PaperDetail>('paper_save', { paper })
+}
+
+export function deletePaper(id: number) {
+  return invoke<boolean>('paper_delete', { id })
 }

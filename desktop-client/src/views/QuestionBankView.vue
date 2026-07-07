@@ -22,6 +22,8 @@
             <div class="question-title-group">
               <span class="index-badge">{{ index + 1 }}</span>
               <span class="title-badge">{{ question.title || '未命名题目' }}</span>
+              <span v-if="question.questionType" class="meta-chip">{{ question.questionType }}</span>
+              <span v-if="question.difficulty > 0" class="meta-chip difficulty-chip">{{ formatDifficulty(question.difficulty) }}</span>
             </div>
             <div class="question-actions">
               <button class="ghost-action" @click="openQuestionEditor(question.id)">编辑</button>
@@ -72,7 +74,6 @@ import QuestionCategoryTree from '../components/QuestionCategoryTree.vue'
 import type { Question } from '../api/native'
 import {
   deleteQuestion,
-  exportQuestion,
   getAppSettings,
   initDataLibraryDir,
   listQuestions,
@@ -162,13 +163,13 @@ async function removeQuestion(id: number) {
   }
 }
 
-async function handleExport(id: number) {
-  try {
-    const path = await exportQuestion(id)
-    message.success(`已导出：${path}`)
-  } catch (error) {
-    message.error(String(error))
-  }
+function handleExport(id: number) {
+  router.push(`/question-export/${id}`)
+}
+
+function formatDifficulty(difficulty: number) {
+  const score = Math.max(0, Math.min(5, Math.trunc(difficulty || 0)))
+  return `${'★'.repeat(score)}${'☆'.repeat(5 - score)}`
 }
 
 </script>
@@ -329,6 +330,26 @@ async function handleExport(id: number) {
   border-radius: 6px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.meta-chip {
+  display: inline-grid;
+  min-height: 26px;
+  padding: 0 9px;
+  color: #607085;
+  font-size: 13px;
+  font-weight: 800;
+  place-items: center;
+  background: #f3f6fa;
+  border: 1px solid #e1e8f0;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.difficulty-chip {
+  color: #d97a00;
+  background: #fff8ec;
+  border-color: #ffe2ad;
 }
 
 .question-box {

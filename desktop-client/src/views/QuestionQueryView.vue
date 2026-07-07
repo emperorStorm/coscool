@@ -44,7 +44,7 @@
         :loading="loading"
         row-key="id"
         :pagination="{ pageSize: 10 }"
-        :scroll="{ x: 1168 }"
+        :scroll="{ x: 1394 }"
       >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'category'">
@@ -52,6 +52,13 @@
           </template>
           <template v-if="column.key === 'title'">
             <span class="query-title-cell">{{ record.title || '未命名题目' }}</span>
+          </template>
+          <template v-if="column.key === 'questionType'">
+            {{ record.questionType || '-' }}
+          </template>
+          <template v-if="column.key === 'difficulty'">
+            <span v-if="record.difficulty > 0" class="difficulty-text">{{ formatDifficulty(record.difficulty) }}</span>
+            <span v-else>-</span>
           </template>
           <template v-if="column.key === 'tags'">
             <a-space wrap>
@@ -64,11 +71,21 @@
             </a-space>
           </template>
           <template v-if="column.key === 'action'">
-            <a-button size="small" type="link" @click="openDetail(record.id)">查看</a-button>
+            <a-space :size="4">
+              <a-button size="small" type="link" @click="openDetail(record.id)">查看</a-button>
+              <a-button size="small" type="link" :disabled="cartIdSet.has(record.id)" @click="addToPaperCart(record.id)">
+                {{ cartIdSet.has(record.id) ? '已加入' : '加入试卷' }}
+              </a-button>
+            </a-space>
           </template>
         </template>
       </a-table>
     </main>
+
+    <button class="paper-cart-button" type="button" title="组装试卷" @click="openPaperAssemble">
+      <ShoppingCart :size="24" :stroke-width="2.4" />
+      <span v-if="cartCount > 0">{{ cartCount }}</span>
+    </button>
 
     <a-drawer v-model:open="detailOpen" title="题目详情" width="760">
       <a-spin :spinning="detailLoading">
@@ -78,6 +95,8 @@
               <a-tag color="cyan">{{ currentQuestion.title || '未命名题目' }}</a-tag>
               <a-tag v-if="currentQuestion.year">{{ currentQuestion.year }}</a-tag>
               <a-tag v-if="currentQuestion.questionNo">题号 {{ currentQuestion.questionNo }}</a-tag>
+              <a-tag v-if="currentQuestion.questionType" color="blue">{{ currentQuestion.questionType }}</a-tag>
+              <a-tag v-if="currentQuestion.difficulty > 0" color="gold">{{ formatDifficulty(currentQuestion.difficulty) }}</a-tag>
               <a-tag>{{ categoryNameMap.get(currentQuestion.categoryId) || '未分类' }}</a-tag>
             </div>
           </section>
@@ -125,11 +144,14 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { message } from 'ant-design-vue'
+import { useRouter } from 'vue-router'
+import { ShoppingCart } from 'lucide-vue-next'
 import MathText from '../components/MathText.vue'
 import type { Question, QuestionCategory, QuestionQueryFilters } from '../api/native'
 import { getQuestion, listCategories, queryQuestions, readAssetDataUrl } from '../api/native'
+import { addQuestionToPaperCart, getPaperCartIds } from '../utils/paperCart'
 
 interface CategoryTreeOption extends QuestionCategory {
   children: CategoryTreeOption[]
@@ -141,6 +163,8 @@ const detailOpen = ref(false)
 const questions = ref<Question[]>([])
 const currentQuestion = ref<Question>()
 const detailImageUrl = ref('')
+const cartIds = ref<number[]>([])
+const router = useRouter()
 const categoryNameMap = ref(new Map<number | undefined, string>())
 const categoryTreeOptions = ref<CategoryTreeOption[]>([])
 const filters = reactive<QuestionQueryFilters>({
@@ -153,17 +177,27 @@ const filters = reactive<QuestionQueryFilters>({
 })
 const columns = [
   { title: '标题', dataIndex: 'title', key: 'title', width: 320 },
+  { title: '题型', key: 'questionType', width: 96 },
+  { title: '难度', key: 'difficulty', width: 130 },
   { title: '年份', dataIndex: 'year', width: 88 },
   { title: '题号', dataIndex: 'questionNo', width: 100 },
   { title: '分类', key: 'category', width: 150 },
   { title: '标签', key: 'tags', width: 190 },
   { title: '知识点', key: 'knowledgePoints', width: 230 },
-  { title: '操作', key: 'action', width: 90, fixed: 'right' }
+  { title: '操作', key: 'action', width: 160, fixed: 'right' }
 ]
+const cartIdSet = computed(() => new Set(cartIds.value))
+const cartCount = computed(() => cartIds.value.length)
 
 onMounted(async () => {
+  refreshPaperCart()
+  window.addEventListener('coscool-paper-cart-change', refreshPaperCart)
   await loadCategories()
   await loadQuestions()
+})
+
+onUnmounted(() => {
+  window.removeEventListener('coscool-paper-cart-change', refreshPaperCart)
 })
 
 async function loadCategories() {
@@ -209,6 +243,20 @@ function resetFilters() {
   loadQuestions()
 }
 
+function refreshPaperCart() {
+  cartIds.value = getPaperCartIds()
+}
+
+function addToPaperCart(id: number) {
+  addQuestionToPaperCart(id)
+  refreshPaperCart()
+  message.success('已加入试卷')
+}
+
+function openPaperAssemble() {
+  router.push('/app/questions/paper-assemble')
+}
+
 async function openDetail(id: number) {
   detailOpen.value = true
   detailLoading.value = true
@@ -232,10 +280,16 @@ async function loadDetailImage() {
     detailImageUrl.value = ''
   }
 }
+
+function formatDifficulty(difficulty: number) {
+  const score = Math.max(0, Math.min(5, Math.trunc(difficulty || 0)))
+  return `${'★'.repeat(score)}${'☆'.repeat(5 - score)}`
+}
 </script>
 
 <style scoped>
 .question-query {
+  position: relative;
   height: calc(100vh - 58px);
   overflow: hidden;
 }
@@ -399,6 +453,12 @@ async function loadDetailImage() {
   white-space: nowrap;
 }
 
+.difficulty-text {
+  color: #d97a00;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .detail-section {
   margin-bottom: 18px;
   padding-bottom: 16px;
@@ -453,6 +513,44 @@ async function loadDetailImage() {
   object-fit: contain;
   border: 1px solid #e2e9f0;
   border-radius: 6px;
+}
+
+.paper-cart-button {
+  position: fixed;
+  right: 34px;
+  bottom: 34px;
+  z-index: 30;
+  display: grid;
+  width: 58px;
+  height: 58px;
+  color: #ffffff;
+  cursor: pointer;
+  place-items: center;
+  background: #0f9187;
+  border: 0;
+  border-radius: 50%;
+  box-shadow: 0 12px 28px rgba(15, 145, 135, 0.28);
+}
+
+.paper-cart-button:hover {
+  background: #0b8279;
+}
+
+.paper-cart-button span {
+  position: absolute;
+  top: -6px;
+  right: -4px;
+  display: grid;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 7px;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 900;
+  place-items: center;
+  background: #e34b63;
+  border: 2px solid #ffffff;
+  border-radius: 999px;
 }
 
 @media (max-width: 1180px) {

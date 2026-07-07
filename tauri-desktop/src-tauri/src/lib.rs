@@ -12,6 +12,7 @@ use uuid::Uuid;
 
 const SETTING_DATA_LIBRARY_PATH: &str = "data_library_path";
 const SETTING_CURRENT_TEACHER: &str = "current_teacher_account";
+const QUESTION_TYPES: [&str; 6] = ["单选题", "多选题", "填空题", "证明题", "计算题", "解答题"];
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 #[serde(rename_all = "camelCase")]
@@ -78,6 +79,8 @@ struct Question {
     image_text: String,
     year: String,
     question_no: String,
+    question_type: String,
+    difficulty: i64,
     answer: String,
     analysis: String,
     created_by: String,
@@ -90,6 +93,41 @@ struct Question {
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
+struct Paper {
+    id: i64,
+    title: String,
+    remark: String,
+    question_count: i64,
+    created_by: String,
+    created_at: String,
+    updated_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct PaperQuestionPayload {
+    question_id: i64,
+    sort_order: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct PaperPayload {
+    title: String,
+    remark: String,
+    created_by: String,
+    questions: Vec<PaperQuestionPayload>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct PaperDetail {
+    paper: Paper,
+    questions: Vec<Question>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
 struct QuestionPayload {
     id: Option<i64>,
     category_id: Option<i64>,
@@ -98,6 +136,10 @@ struct QuestionPayload {
     image_text: String,
     year: String,
     question_no: String,
+    #[serde(default)]
+    question_type: String,
+    #[serde(default)]
+    difficulty: i64,
     answer: String,
     analysis: String,
     created_by: String,
@@ -142,6 +184,18 @@ struct AssetDataUrl {
 
 fn now_text() -> String {
     Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
+}
+
+fn normalize_difficulty(difficulty: i64) -> i64 {
+    difficulty.clamp(0, 5)
+}
+
+fn normalize_question_type(question_type: &str) -> Result<String, String> {
+    let text = question_type.trim();
+    if text.is_empty() || QUESTION_TYPES.contains(&text) {
+        return Ok(text.to_string());
+    }
+    Err("题型不合法".to_string())
 }
 
 fn app_config_dir(app: &AppHandle) -> Result<PathBuf, String> {
@@ -269,6 +323,8 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
             image_text TEXT NOT NULL DEFAULT '',
             year TEXT NOT NULL DEFAULT '',
             question_no TEXT NOT NULL DEFAULT '',
+            question_type TEXT NOT NULL DEFAULT '',
+            difficulty INTEGER NOT NULL DEFAULT 0,
             answer TEXT NOT NULL DEFAULT '',
             analysis TEXT NOT NULL DEFAULT '',
             created_by TEXT NOT NULL DEFAULT '',
@@ -313,11 +369,47 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
             size INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL
         );
+        CREATE TABLE IF NOT EXISTS papers (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            remark TEXT NOT NULL DEFAULT '',
+            question_count INTEGER NOT NULL DEFAULT 0,
+            created_by TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE TABLE IF NOT EXISTS paper_questions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            paper_id INTEGER NOT NULL,
+            question_id INTEGER NOT NULL,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        );
         CREATE INDEX IF NOT EXISTS idx_questions_category ON questions(category_id);
         CREATE INDEX IF NOT EXISTS idx_questions_year ON questions(year);
+        CREATE INDEX IF NOT EXISTS idx_paper_questions_paper ON paper_questions(paper_id);
+        CREATE INDEX IF NOT EXISTS idx_papers_updated_at ON papers(updated_at);
         ",
     )
     .map_err(|error| error.to_string())?;
+    migrate_question_schema(conn)?;
+    Ok(())
+}
+
+fn migrate_question_schema(conn: &Connection) -> Result<(), String> {
+    let mut stmt = conn.prepare("PRAGMA table_info(questions)").map_err(|error| error.to_string())?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|error| error.to_string())?;
+    let columns = rows.collect::<Result<Vec<_>, _>>().map_err(|error| error.to_string())?;
+    if !columns.iter().any(|item| item == "question_type") {
+        conn.execute("ALTER TABLE questions ADD COLUMN question_type TEXT NOT NULL DEFAULT ''", [])
+            .map_err(|error| error.to_string())?;
+    }
+    if !columns.iter().any(|item| item == "difficulty") {
+        conn.execute("ALTER TABLE questions ADD COLUMN difficulty INTEGER NOT NULL DEFAULT 0", [])
+            .map_err(|error| error.to_string())?;
+    }
     Ok(())
 }
 
@@ -439,7 +531,8 @@ fn save_name_links(conn: &Connection, question_id: i64, table: &str, link_table:
 fn fetch_question(conn: &Connection, id: i64) -> Result<Question, String> {
     let mut question = conn
         .query_row(
-            "SELECT id, category_id, title, stem, image_text, year, question_no, answer, analysis, created_by, created_at, updated_at
+            "SELECT id, category_id, title, stem, image_text, year, question_no, question_type, difficulty,
+                    answer, analysis, created_by, created_at, updated_at
              FROM questions WHERE id = ?1",
             [id],
             |row| {
@@ -451,11 +544,13 @@ fn fetch_question(conn: &Connection, id: i64) -> Result<Question, String> {
                     image_text: row.get(4)?,
                     year: row.get(5)?,
                     question_no: row.get(6)?,
-                    answer: row.get(7)?,
-                    analysis: row.get(8)?,
-                    created_by: row.get(9)?,
-                    created_at: row.get(10)?,
-                    updated_at: row.get(11)?,
+                    question_type: row.get(7)?,
+                    difficulty: row.get(8)?,
+                    answer: row.get(9)?,
+                    analysis: row.get(10)?,
+                    created_by: row.get(11)?,
+                    created_at: row.get(12)?,
+                    updated_at: row.get(13)?,
                     options: Vec::new(),
                     tags: Vec::new(),
                     knowledge_points: Vec::new(),
@@ -467,6 +562,27 @@ fn fetch_question(conn: &Connection, id: i64) -> Result<Question, String> {
     question.tags = query_names(conn, "tags", "question_tags", "tag_id", id)?;
     question.knowledge_points = query_names(conn, "knowledge_points", "question_knowledge_points", "knowledge_point_id", id)?;
     Ok(question)
+}
+
+fn row_to_paper(row: &rusqlite::Row<'_>) -> rusqlite::Result<Paper> {
+    Ok(Paper {
+        id: row.get(0)?,
+        title: row.get(1)?,
+        remark: row.get(2)?,
+        question_count: row.get(3)?,
+        created_by: row.get(4)?,
+        created_at: row.get(5)?,
+        updated_at: row.get(6)?,
+    })
+}
+
+fn fetch_paper(conn: &Connection, id: i64) -> Result<Paper, String> {
+    conn.query_row(
+        "SELECT id, title, remark, question_count, created_by, created_at, updated_at FROM papers WHERE id = ?1",
+        [id],
+        row_to_paper,
+    )
+    .map_err(|error| error.to_string())
 }
 
 fn category_descendant_ids(conn: &Connection, category_id: i64) -> Result<Vec<i64>, String> {
@@ -817,6 +933,21 @@ fn question_get(app: AppHandle, id: i64) -> Result<Question, String> {
 }
 
 #[tauri::command]
+fn question_batch_get(app: AppHandle, ids: Vec<i64>) -> Result<Vec<Question>, String> {
+    let conn = open_library_db(&app)?;
+    let mut questions = Vec::new();
+    for id in ids {
+        if id <= 0 || questions.iter().any(|item: &Question| item.id == id) {
+            continue;
+        }
+        if let Ok(question) = fetch_question(&conn, id) {
+            questions.push(question);
+        }
+    }
+    Ok(questions)
+}
+
+#[tauri::command]
 fn question_query(app: AppHandle, filters: QuestionQueryFilters) -> Result<Vec<Question>, String> {
     let conn = open_library_db(&app)?;
     let category_ids = if let Some(category_id) = filters.category_id {
@@ -847,13 +978,16 @@ fn question_save(app: AppHandle, question: QuestionPayload) -> Result<Question, 
     if question.title.trim().is_empty() || question.stem.trim().is_empty() {
         return Err("标题和题目不能为空".to_string());
     }
+    let question_type = normalize_question_type(&question.question_type)?;
+    let difficulty = normalize_difficulty(question.difficulty);
     let mut conn = open_library_db(&app)?;
     let tx = conn.transaction().map_err(|error| error.to_string())?;
     let now = now_text();
     let question_id = if let Some(id) = question.id {
         tx.execute(
             "UPDATE questions SET category_id = ?1, title = ?2, stem = ?3, image_text = ?4, year = ?5,
-             question_no = ?6, answer = ?7, analysis = ?8, created_by = ?9, updated_at = ?10 WHERE id = ?11",
+             question_no = ?6, question_type = ?7, difficulty = ?8, answer = ?9, analysis = ?10,
+             created_by = ?11, updated_at = ?12 WHERE id = ?13",
             params![
                 question.category_id,
                 question.title,
@@ -861,6 +995,8 @@ fn question_save(app: AppHandle, question: QuestionPayload) -> Result<Question, 
                 question.image_text,
                 question.year,
                 question.question_no,
+                question_type,
+                difficulty,
                 question.answer,
                 question.analysis,
                 question.created_by,
@@ -872,8 +1008,9 @@ fn question_save(app: AppHandle, question: QuestionPayload) -> Result<Question, 
         id
     } else {
         tx.execute(
-            "INSERT INTO questions (category_id, title, stem, image_text, year, question_no, answer, analysis, created_by, created_at, updated_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?10)",
+            "INSERT INTO questions (category_id, title, stem, image_text, year, question_no, question_type, difficulty,
+                                    answer, analysis, created_by, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?12)",
             params![
                 question.category_id,
                 question.title,
@@ -881,6 +1018,8 @@ fn question_save(app: AppHandle, question: QuestionPayload) -> Result<Question, 
                 question.image_text,
                 question.year,
                 question.question_no,
+                question_type,
+                difficulty,
                 question.answer,
                 question.analysis,
                 question.created_by,
@@ -923,6 +1062,98 @@ fn question_delete(app: AppHandle, id: i64) -> Result<bool, String> {
     conn.execute("DELETE FROM question_knowledge_points WHERE question_id = ?1", [id])
         .map_err(|error| error.to_string())?;
     conn.execute("DELETE FROM questions WHERE id = ?1", [id]).map_err(|error| error.to_string())?;
+    Ok(true)
+}
+
+#[tauri::command]
+fn paper_list(app: AppHandle) -> Result<Vec<Paper>, String> {
+    let conn = open_library_db(&app)?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT id, title, remark, question_count, created_by, created_at, updated_at
+             FROM papers
+             ORDER BY updated_at DESC, id DESC",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = stmt.query_map([], row_to_paper).map_err(|error| error.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn paper_get(app: AppHandle, id: i64) -> Result<PaperDetail, String> {
+    let conn = open_library_db(&app)?;
+    let paper = fetch_paper(&conn, id)?;
+    let mut stmt = conn
+        .prepare(
+            "SELECT question_id FROM paper_questions
+             WHERE paper_id = ?1
+             ORDER BY sort_order ASC, id ASC",
+        )
+        .map_err(|error| error.to_string())?;
+    let rows = stmt.query_map([id], |row| row.get::<_, i64>(0)).map_err(|error| error.to_string())?;
+    let mut questions = Vec::new();
+    for row in rows {
+        if let Ok(question) = fetch_question(&conn, row.map_err(|error| error.to_string())?) {
+            questions.push(question);
+        }
+    }
+    Ok(PaperDetail { paper, questions })
+}
+
+#[tauri::command]
+fn paper_save(app: AppHandle, paper: PaperPayload) -> Result<PaperDetail, String> {
+    if paper.title.trim().is_empty() {
+        return Err("试卷名称不能为空".to_string());
+    }
+    if paper.questions.is_empty() {
+        return Err("请先加入题目再生成试卷".to_string());
+    }
+    let mut conn = open_library_db(&app)?;
+    let tx = conn.transaction().map_err(|error| error.to_string())?;
+    let now = now_text();
+    let mut question_ids = Vec::new();
+    for item in paper.questions {
+        if item.question_id <= 0 || question_ids.contains(&item.question_id) {
+            continue;
+        }
+        if fetch_question(&tx, item.question_id).is_ok() {
+            question_ids.push(item.question_id);
+        }
+    }
+    if question_ids.is_empty() {
+        return Err("试卷题目不存在，请重新选择题目".to_string());
+    }
+    tx.execute(
+        "INSERT INTO papers (title, remark, question_count, created_by, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
+        params![paper.title.trim(), paper.remark.trim(), question_ids.len() as i64, paper.created_by.trim(), now],
+    )
+    .map_err(|error| error.to_string())?;
+    let paper_id = tx.last_insert_rowid();
+    for (index, question_id) in question_ids.iter().enumerate() {
+        tx.execute(
+            "INSERT INTO paper_questions (paper_id, question_id, sort_order, created_at)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![paper_id, question_id, index as i64, now],
+        )
+        .map_err(|error| error.to_string())?;
+    }
+    tx.commit().map_err(|error| error.to_string())?;
+    let conn = open_library_db(&app)?;
+    let paper = fetch_paper(&conn, paper_id)?;
+    let mut questions = Vec::new();
+    for question_id in question_ids {
+        questions.push(fetch_question(&conn, question_id)?);
+    }
+    Ok(PaperDetail { paper, questions })
+}
+
+#[tauri::command]
+fn paper_delete(app: AppHandle, id: i64) -> Result<bool, String> {
+    let conn = open_library_db(&app)?;
+    conn.execute("DELETE FROM paper_questions WHERE paper_id = ?1", [id])
+        .map_err(|error| error.to_string())?;
+    conn.execute("DELETE FROM papers WHERE id = ?1", [id]).map_err(|error| error.to_string())?;
     Ok(true)
 }
 
@@ -992,6 +1223,26 @@ fn read_asset_data_url(app: AppHandle, relative_path: String) -> Result<AssetDat
         data_url: format!("data:{};base64,{}", mime_type, STANDARD.encode(bytes)),
         mime_type,
     })
+}
+
+#[tauri::command]
+fn save_export_file(target_path: String, data_url: String) -> Result<String, String> {
+    let path_text = target_path.trim();
+    if path_text.is_empty() {
+        return Err("保存路径不能为空".to_string());
+    }
+    let target = PathBuf::from(path_text);
+    if target.file_name().is_none() {
+        return Err("保存路径不合法".to_string());
+    }
+    if let Some(parent) = target.parent() {
+        if !parent.exists() {
+            return Err("保存目录不存在".to_string());
+        }
+    }
+    let bytes = decode_data_url(&data_url)?;
+    fs::write(&target, bytes).map_err(|error| error.to_string())?;
+    Ok(target.to_string_lossy().to_string())
 }
 
 fn insert_asset(
@@ -1075,13 +1326,19 @@ pub fn run() {
             category_save,
             category_delete,
             question_list,
+            question_batch_get,
             question_query,
             question_get,
             question_save,
             question_delete,
+            paper_list,
+            paper_get,
+            paper_save,
+            paper_delete,
             import_asset,
             save_board,
             export_question,
+            save_export_file,
             read_asset_data_url
         ])
         .run(tauri::generate_context!())
