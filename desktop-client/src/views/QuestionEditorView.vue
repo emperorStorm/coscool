@@ -102,7 +102,11 @@
             <BoardEditor v-if="boardVisible" class="board-section" @save="handleBoardSave" />
           </div>
 
-          <div v-if="isChoiceQuestion" class="option-section">
+          <div
+            v-if="isChoiceQuestion"
+            class="option-section"
+            :style="{ gridTemplateColumns: optionGridColumns }"
+          >
             <div
               v-for="option in questionForm.options"
               :key="option.optionKey"
@@ -112,9 +116,16 @@
               <a-textarea v-model:value="option.content" placeholder="..." :rows="3" />
             </div>
             <div class="option-tools">
-              <button type="button" class="active">一行</button>
-              <button type="button">一列</button>
-              <button type="button">两列</button>
+              <button
+                v-for="layout in optionLayoutOptions"
+                :key="layout.value"
+                type="button"
+                :class="{ active: optionLayout === layout.value }"
+                :aria-pressed="optionLayout === layout.value"
+                @click="optionLayout = layout.value"
+              >
+                {{ layout.label }}
+              </button>
               <button type="button">模型</button>
               <button type="button" @click="addOption">添加</button>
             </div>
@@ -176,7 +187,11 @@
             <MathText class="preview-question-text" :content="questionForm.stem || '题目内容预览'" />
             <img v-if="questionImageUrl" class="preview-image" :src="questionImageUrl" alt="题目配图预览" />
             <p v-else-if="questionForm.imageText" class="muted">{{ questionForm.imageText }}</p>
-            <div v-if="isChoiceQuestion" class="preview-options">
+            <div
+              v-if="isChoiceQuestion"
+              class="preview-options"
+              :style="{ gridTemplateColumns: previewOptionGridColumns }"
+            >
               <div v-for="option in choiceOptions" :key="option.optionKey" class="preview-option-item">
                 <strong>{{ option.optionKey }}.</strong>
                 <MathText :content="option.content || '未填写'" />
@@ -249,8 +264,17 @@ const questionTypeOptions = ['单选题', '多选题', '填空题', '证明题',
 const choiceQuestionTypes = ['单选题', '多选题']
 const difficultyStars = [1, 2, 3, 4, 5]
 const tagSeparators = [',', '，', ';', '；', '\n']
+type OptionLayout = 'singleRow' | 'singleColumn' | 'twoColumn'
+const optionLayout = ref<OptionLayout>('twoColumn')
+const optionLayoutOptions: Array<{ label: string; value: OptionLayout }> = [
+  { label: '一行', value: 'singleRow' },
+  { label: '一列', value: 'singleColumn' },
+  { label: '两列', value: 'twoColumn' }
+]
 const isChoiceQuestion = computed(() => choiceQuestionTypes.includes(questionForm.questionType))
 const choiceOptions = computed(() => (isChoiceQuestion.value ? questionForm.options : []))
+const optionGridColumns = computed(() => getOptionGridColumns(180))
+const previewOptionGridColumns = computed(() => getOptionGridColumns(96))
 
 onMounted(async () => {
   await ensureLibrary()
@@ -297,6 +321,17 @@ function createDefaultOptions() {
     { optionKey: 'C', content: '', sortOrder: 3 },
     { optionKey: 'D', content: '', sortOrder: 4 }
   ]
+}
+
+function getOptionGridColumns(minColumnWidth: number) {
+  if (optionLayout.value === 'singleColumn') {
+    return 'minmax(0, 1fr)'
+  }
+  if (optionLayout.value === 'singleRow') {
+    const optionCount = Math.max(choiceOptions.value.length, 1)
+    return `repeat(${optionCount}, minmax(${minColumnWidth}px, 1fr))`
+  }
+  return 'repeat(2, minmax(0, 1fr))'
 }
 
 async function ensureLibrary() {
@@ -645,6 +680,7 @@ async function loadQuestionImage() {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   padding-right: 54px;
+  overflow-x: auto;
 }
 
 .option-tools {
@@ -748,6 +784,7 @@ async function loadQuestionImage() {
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
   margin-top: 18px;
+  overflow-x: auto;
 }
 
 .preview-option-item {
