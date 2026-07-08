@@ -2,7 +2,15 @@
   <section class="category-tree-panel">
     <div class="tree-title-row">
       <div class="tree-title">{{ title }}</div>
-      <a-button type="primary" shape="circle" size="small" title="新增根分类" @click="openEditor('root')">+</a-button>
+      <div class="tree-actions">
+        <a-button shape="circle" size="small" title="导出题库备份" :loading="exportingBackup" @click="handleExportBackup">
+          <Download v-if="!exportingBackup" class="tree-action-icon" :size="14" :stroke-width="2.4" />
+        </a-button>
+        <a-button shape="circle" size="small" title="备份还原" :loading="restoringBackup" @click="selectBackupFile">
+          <Upload v-if="!restoringBackup" class="tree-action-icon" :size="14" :stroke-width="2.4" />
+        </a-button>
+        <a-button type="primary" shape="circle" size="small" title="新增根分类" @click="openEditor('root')">+</a-button>
+      </div>
     </div>
     <a-input-search v-model:value="categoryKeyword" placeholder="搜索分类" allow-clear class="category-search" @change="filterCategoryTree" />
     <a-tree
@@ -54,8 +62,10 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { message, Modal } from 'ant-design-vue'
+import { open } from '@tauri-apps/plugin-dialog'
+import { Download, Upload } from 'lucide-vue-next'
 import type { QuestionCategory } from '../api/native'
-import { deleteCategory, listCategories, saveCategory } from '../api/native'
+import { deleteCategory, exportDataBackup, listCategories, restoreDataBackup, saveCategory } from '../api/native'
 
 export interface CategoryTreeNode extends QuestionCategory {
   children: CategoryTreeNode[]
@@ -77,6 +87,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   select: [id?: number, node?: CategoryTreeNode]
   loaded: [categories: QuestionCategory[], tree: CategoryTreeNode[]]
+  restored: []
 }>()
 
 const categories = ref<QuestionCategory[]>([])
@@ -91,6 +102,8 @@ const editorOpen = ref(false)
 const editorMode = ref('root')
 const editorTarget = ref<CategoryTreeNode | undefined>()
 const activeMenuNode = ref<CategoryTreeNode | undefined>()
+const exportingBackup = ref(false)
+const restoringBackup = ref(false)
 const editorForm = reactive<Partial<QuestionCategory>>({
   id: undefined,
   parentId: undefined,
@@ -241,6 +254,58 @@ async function saveEditor() {
   }
 }
 
+async function handleExportBackup() {
+  if (exportingBackup.value) return
+  exportingBackup.value = true
+  try {
+    const result = await exportDataBackup()
+    message.success({
+      content: `导出成功：${result.filePath}`,
+      duration: 6
+    })
+  } catch (error) {
+    message.error(String(error))
+  } finally {
+    exportingBackup.value = false
+  }
+}
+
+async function selectBackupFile() {
+  if (restoringBackup.value) return
+  const selected = await open({
+    directory: false,
+    multiple: false,
+    title: '选择课思库备份文件',
+    filters: [{ name: 'Zip 备份文件', extensions: ['zip'] }]
+  })
+  const path = Array.isArray(selected) ? selected[0] : selected
+  if (!path) return
+  Modal.confirm({
+    title: '确认覆盖还原数据？',
+    content: '还原后当前题库分类、题目和资源会被备份文件覆盖，请确认已选择正确的 zip 备份文件。',
+    okText: '覆盖还原',
+    okType: 'danger',
+    cancelText: '取消',
+    async onOk() {
+      restoringBackup.value = true
+      try {
+        const result = await restoreDataBackup(path)
+        selectedKeys.value = []
+        await load()
+        emit('restored')
+        message.success({
+          content: `还原成功：${result.filePath}`,
+          duration: 6
+        })
+      } catch (error) {
+        message.error(String(error))
+      } finally {
+        restoringBackup.value = false
+      }
+    }
+  })
+}
+
 function confirmDeleteCategory(node: CategoryTreeNode) {
   Modal.confirm({
     title: '确认删除分类？',
@@ -317,6 +382,23 @@ defineExpose({ load })
   content: '';
   background: #0f8f83;
   border-radius: 3px;
+}
+
+.tree-actions {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  flex: 0 0 auto;
+}
+
+.tree-actions :deep(.ant-btn) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tree-action-icon {
+  color: currentcolor;
 }
 
 .category-search {

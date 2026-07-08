@@ -143,6 +143,11 @@ export interface AssetDataUrl {
   mimeType: string
 }
 
+export interface BackupResult {
+  filePath: string
+  createdAt: string
+}
+
 export interface UpdateCheckResult {
   currentVersion: string
   update?: Update
@@ -273,6 +278,14 @@ export function saveBoard(questionId: number | undefined, boardJson: string, pre
 
 export function exportQuestion(id: number) {
   return invoke<string>('export_question', { id })
+}
+
+export function exportDataBackup() {
+  return invoke<BackupResult>('export_data_backup')
+}
+
+export function restoreDataBackup(sourcePath: string) {
+  return invoke<BackupResult>('restore_data_backup', { sourcePath })
 }
 
 export function saveExportFile(targetPath: string, dataUrl: string) {

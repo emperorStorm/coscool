@@ -1,7 +1,7 @@
 <template>
   <div class="question-bank page-shell">
     <aside class="category-pane">
-      <QuestionCategoryTree ref="categoryTreeRef" :selected-id="selectedCategoryId" title="题库分类" @select="selectCategory" />
+      <QuestionCategoryTree ref="categoryTreeRef" :selected-id="selectedCategoryId" title="题库分类" @select="selectCategory" @restored="handleDataRestored" />
     </aside>
 
     <main class="question-main">
@@ -141,6 +141,13 @@ async function loadQuestionListImages() {
 function selectCategory(id?: number) {
   selectedCategoryId.value = id
   loadQuestions()
+}
+
+async function handleDataRestored() {
+  selectedCategoryId.value = undefined
+  keyword.value = ''
+  questionImageMap.value = {}
+  await loadQuestions()
 }
 
 function openQuestionEditor(id?: number) {

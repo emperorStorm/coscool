@@ -138,6 +138,7 @@
             </div>
             <a-select
               v-model:value="questionForm.knowledgePoints"
+              class="full-width-tag-select"
               mode="tags"
               placeholder="知识点，可输入多个"
               :token-separators="tagSeparators"
@@ -151,6 +152,7 @@
             </div>
             <a-select
               v-model:value="questionForm.tags"
+              class="full-width-tag-select"
               mode="tags"
               placeholder="标签，可输入多个"
               :token-separators="tagSeparators"
@@ -672,6 +674,15 @@ async function loadQuestionImage() {
   gap: 8px;
   align-items: center;
   justify-content: space-between;
+}
+
+.full-width-tag-select {
+  display: block;
+  width: 100%;
+}
+
+.full-width-tag-select :deep(.ant-select-selector) {
+  width: 100%;
 }
 
 .option-section {

@@ -1,6 +1,6 @@
 [package]
 name = "coscool-desktop"
-version = "0.2.1"
+version = "0.2.2"
 description = "课思库桌面客户端"
 authors = ["wangjun"]
 edition = "2021"
@@ -24,3 +24,4 @@ tauri-plugin-dialog = "2"
 tauri-plugin-process = "2"
 tauri-plugin-updater = "2"
 uuid = { version = "1", features = ["v4"] }
+zip = "2"

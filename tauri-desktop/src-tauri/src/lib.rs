@@ -2,17 +2,24 @@ use base64::engine::general_purpose::STANDARD;
 use base64::Engine;
 use chrono::Local;
 use rusqlite::{params, Connection, OptionalExtension};
-use std::path::Component;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
-use std::fs;
+use std::fs::{self, File};
+use std::io::{self, Read, Seek, Write};
+use std::path::Component;
 use std::path::{Path, PathBuf};
 use tauri::{AppHandle, Manager};
 use uuid::Uuid;
+use zip::write::SimpleFileOptions;
+use zip::{CompressionMethod, ZipArchive, ZipWriter};
 
 const SETTING_DATA_LIBRARY_PATH: &str = "data_library_path";
 const SETTING_CURRENT_TEACHER: &str = "current_teacher_account";
 const QUESTION_TYPES: [&str; 6] = ["单选题", "多选题", "填空题", "证明题", "计算题", "解答题"];
+const BACKUP_MANIFEST_FILE: &str = "coscool-backup.json";
+const BACKUP_APP_NAME: &str = "Coscool";
+const BACKUP_VERSION: i64 = 1;
+const BACKUP_ASSET_DIRS: [&str; 3] = ["assets/images", "assets/boards", "assets/thumbs"];
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 #[serde(rename_all = "camelCase")]
@@ -182,6 +189,21 @@ struct AssetDataUrl {
     mime_type: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct BackupResult {
+    file_path: String,
+    created_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct BackupManifest {
+    app: String,
+    version: i64,
+    created_at: String,
+}
+
 fn now_text() -> String {
     Local::now().format("%Y-%m-%d %H:%M:%S").to_string()
 }
@@ -199,7 +221,10 @@ fn normalize_question_type(question_type: &str) -> Result<String, String> {
 }
 
 fn app_config_dir(app: &AppHandle) -> Result<PathBuf, String> {
-    let dir = app.path().app_config_dir().map_err(|error| error.to_string())?;
+    let dir = app
+        .path()
+        .app_config_dir()
+        .map_err(|error| error.to_string())?;
     fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
     Ok(dir)
 }
@@ -223,9 +248,13 @@ fn open_config_db(app: &AppHandle) -> Result<Connection, String> {
 }
 
 fn get_setting(conn: &Connection, key: &str) -> Result<Option<String>, String> {
-    conn.query_row("SELECT value FROM app_settings WHERE key = ?1", [key], |row| row.get(0))
-        .optional()
-        .map_err(|error| error.to_string())
+    conn.query_row(
+        "SELECT value FROM app_settings WHERE key = ?1",
+        [key],
+        |row| row.get(0),
+    )
+    .optional()
+    .map_err(|error| error.to_string())
 }
 
 fn set_setting(conn: &Connection, key: &str, value: &str) -> Result<(), String> {
@@ -281,6 +310,235 @@ fn open_library_db(app: &AppHandle) -> Result<Connection, String> {
     let root = data_library_root(app)?;
     init_library(&root)?;
     Connection::open(root.join("coscool.sqlite")).map_err(|error| error.to_string())
+}
+
+fn sqlite_string_literal(value: &Path) -> String {
+    value.to_string_lossy().replace('\'', "''")
+}
+
+fn zip_error(error: zip::result::ZipError) -> String {
+    error.to_string()
+}
+
+fn io_error(error: io::Error) -> String {
+    error.to_string()
+}
+
+fn unique_child_path(dir: &Path, file_name: &str) -> PathBuf {
+    let target = dir.join(file_name);
+    if !target.exists() {
+        return target;
+    }
+    let path = Path::new(file_name);
+    let stem = path
+        .file_stem()
+        .and_then(|item| item.to_str())
+        .unwrap_or("backup");
+    let ext = path
+        .extension()
+        .and_then(|item| item.to_str())
+        .unwrap_or("");
+    let suffix = Uuid::new_v4().to_string();
+    let short_suffix = &suffix[..8];
+    if ext.is_empty() {
+        dir.join(format!("{stem}-{short_suffix}"))
+    } else {
+        dir.join(format!("{stem}-{short_suffix}.{ext}"))
+    }
+}
+
+fn backup_file_options() -> SimpleFileOptions {
+    SimpleFileOptions::default()
+        .compression_method(CompressionMethod::Deflated)
+        .unix_permissions(0o644)
+}
+
+fn add_file_to_zip<W: Write + Seek>(
+    zip: &mut ZipWriter<W>,
+    source: &Path,
+    archive_name: &str,
+    options: SimpleFileOptions,
+) -> Result<(), String> {
+    zip.start_file(archive_name.replace('\\', "/"), options)
+        .map_err(zip_error)?;
+    let mut file = File::open(source).map_err(io_error)?;
+    io::copy(&mut file, zip).map_err(io_error)?;
+    Ok(())
+}
+
+fn add_directory_to_zip<W: Write + Seek>(
+    zip: &mut ZipWriter<W>,
+    source_dir: &Path,
+    archive_dir: &str,
+    options: SimpleFileOptions,
+) -> Result<(), String> {
+    if !source_dir.exists() {
+        return Ok(());
+    }
+    zip.add_directory(format!("{archive_dir}/"), options)
+        .map_err(zip_error)?;
+    for entry in fs::read_dir(source_dir).map_err(io_error)? {
+        let entry = entry.map_err(io_error)?;
+        let file_name = entry
+            .file_name()
+            .to_str()
+            .ok_or_else(|| "备份失败：文件名包含不支持的字符".to_string())?
+            .to_string();
+        let source_path = entry.path();
+        let archive_name = format!("{archive_dir}/{file_name}");
+        if entry.file_type().map_err(io_error)?.is_dir() {
+            add_directory_to_zip(zip, &source_path, &archive_name, options)?;
+        } else {
+            add_file_to_zip(zip, &source_path, &archive_name, options)?;
+        }
+    }
+    Ok(())
+}
+
+fn write_backup_zip(
+    backup_path: &Path,
+    snapshot_db: &Path,
+    root: &Path,
+    manifest: &BackupManifest,
+) -> Result<(), String> {
+    let file = File::create(backup_path).map_err(io_error)?;
+    let mut zip = ZipWriter::new(file);
+    let options = backup_file_options();
+    let manifest_bytes = serde_json::to_vec_pretty(manifest).map_err(|error| error.to_string())?;
+    zip.start_file(BACKUP_MANIFEST_FILE, options)
+        .map_err(zip_error)?;
+    zip.write_all(&manifest_bytes).map_err(io_error)?;
+    add_file_to_zip(&mut zip, snapshot_db, "coscool.sqlite", options)?;
+    for asset_dir in BACKUP_ASSET_DIRS {
+        add_directory_to_zip(&mut zip, &root.join(asset_dir), asset_dir, options)?;
+    }
+    zip.finish().map_err(zip_error)?;
+    Ok(())
+}
+
+fn validate_backup_entry_name(name: &str) -> Result<(), String> {
+    let text = name.trim();
+    if text.is_empty() || text.contains('\\') {
+        return Err("备份文件包含非法路径".to_string());
+    }
+    let path = Path::new(text);
+    if path.is_absolute()
+        || path
+            .components()
+            .any(|part| !matches!(part, Component::Normal(_)))
+    {
+        return Err("备份文件包含非法路径".to_string());
+    }
+    Ok(())
+}
+
+fn read_backup_manifest(archive: &mut ZipArchive<File>) -> Result<BackupManifest, String> {
+    let mut manifest_file = archive
+        .by_name(BACKUP_MANIFEST_FILE)
+        .map_err(|_| "备份文件缺少清单信息".to_string())?;
+    let mut manifest_text = String::new();
+    manifest_file
+        .read_to_string(&mut manifest_text)
+        .map_err(io_error)?;
+    let manifest: BackupManifest =
+        serde_json::from_str(&manifest_text).map_err(|error| error.to_string())?;
+    if manifest.app != BACKUP_APP_NAME || manifest.version != BACKUP_VERSION {
+        return Err("备份文件版本不兼容".to_string());
+    }
+    Ok(manifest)
+}
+
+fn extract_backup_archive(
+    archive: &mut ZipArchive<File>,
+    staging_root: &Path,
+) -> Result<(), String> {
+    for index in 0..archive.len() {
+        let mut entry = archive.by_index(index).map_err(zip_error)?;
+        let name = entry.name().to_string();
+        validate_backup_entry_name(&name)?;
+        let target = staging_root.join(&name);
+        if entry.is_dir() {
+            fs::create_dir_all(&target).map_err(io_error)?;
+            continue;
+        }
+        if let Some(parent) = target.parent() {
+            fs::create_dir_all(parent).map_err(io_error)?;
+        }
+        let mut target_file = File::create(&target).map_err(io_error)?;
+        io::copy(&mut entry, &mut target_file).map_err(io_error)?;
+    }
+    Ok(())
+}
+
+fn validate_restored_database(db_path: &Path) -> Result<(), String> {
+    if !db_path.exists() || !db_path.is_file() {
+        return Err("备份文件缺少 coscool.sqlite".to_string());
+    }
+    let conn = Connection::open(db_path).map_err(|error| error.to_string())?;
+    for table_name in ["question_categories", "questions", "assets"] {
+        let exists: Option<i64> = conn
+            .query_row(
+                "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?1",
+                [table_name],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|error| error.to_string())?;
+        if exists.is_none() {
+            return Err("备份文件数据库结构不完整".to_string());
+        }
+    }
+    Ok(())
+}
+
+fn copy_directory_all(source: &Path, target: &Path) -> Result<(), String> {
+    fs::create_dir_all(target).map_err(io_error)?;
+    for entry in fs::read_dir(source).map_err(io_error)? {
+        let entry = entry.map_err(io_error)?;
+        let source_path = entry.path();
+        let target_path = target.join(entry.file_name());
+        if entry.file_type().map_err(io_error)?.is_dir() {
+            copy_directory_all(&source_path, &target_path)?;
+        } else {
+            fs::copy(&source_path, &target_path).map_err(io_error)?;
+        }
+    }
+    Ok(())
+}
+
+fn replace_directory(source: &Path, target: &Path) -> Result<(), String> {
+    if target.exists() {
+        fs::remove_dir_all(target).map_err(io_error)?;
+    }
+    if source.exists() {
+        copy_directory_all(source, target)?;
+    } else {
+        fs::create_dir_all(target).map_err(io_error)?;
+    }
+    Ok(())
+}
+
+fn remove_file_if_exists(path: &Path) -> Result<(), String> {
+    if path.exists() {
+        fs::remove_file(path).map_err(io_error)?;
+    }
+    Ok(())
+}
+
+fn replace_library_data(root: &Path, staging_root: &Path) -> Result<(), String> {
+    let db_path = root.join("coscool.sqlite");
+    remove_file_if_exists(&db_path)?;
+    remove_file_if_exists(&root.join("coscool.sqlite-wal"))?;
+    remove_file_if_exists(&root.join("coscool.sqlite-shm"))?;
+    fs::copy(staging_root.join("coscool.sqlite"), db_path).map_err(io_error)?;
+    for asset_dir in BACKUP_ASSET_DIRS {
+        replace_directory(&staging_root.join(asset_dir), &root.join(asset_dir))?;
+    }
+    fs::create_dir_all(root.join("assets/exports")).map_err(io_error)?;
+    fs::create_dir_all(root.join("backups")).map_err(io_error)?;
+    fs::create_dir_all(root.join("imports")).map_err(io_error)?;
+    init_library(root)?;
+    Ok(())
 }
 
 fn init_schema(conn: &Connection) -> Result<(), String> {
@@ -397,25 +655,39 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
 }
 
 fn migrate_question_schema(conn: &Connection) -> Result<(), String> {
-    let mut stmt = conn.prepare("PRAGMA table_info(questions)").map_err(|error| error.to_string())?;
+    let mut stmt = conn
+        .prepare("PRAGMA table_info(questions)")
+        .map_err(|error| error.to_string())?;
     let rows = stmt
         .query_map([], |row| row.get::<_, String>(1))
         .map_err(|error| error.to_string())?;
-    let columns = rows.collect::<Result<Vec<_>, _>>().map_err(|error| error.to_string())?;
+    let columns = rows
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())?;
     if !columns.iter().any(|item| item == "question_type") {
-        conn.execute("ALTER TABLE questions ADD COLUMN question_type TEXT NOT NULL DEFAULT ''", [])
-            .map_err(|error| error.to_string())?;
+        conn.execute(
+            "ALTER TABLE questions ADD COLUMN question_type TEXT NOT NULL DEFAULT ''",
+            [],
+        )
+        .map_err(|error| error.to_string())?;
     }
     if !columns.iter().any(|item| item == "difficulty") {
-        conn.execute("ALTER TABLE questions ADD COLUMN difficulty INTEGER NOT NULL DEFAULT 0", [])
-            .map_err(|error| error.to_string())?;
+        conn.execute(
+            "ALTER TABLE questions ADD COLUMN difficulty INTEGER NOT NULL DEFAULT 0",
+            [],
+        )
+        .map_err(|error| error.to_string())?;
     }
     Ok(())
 }
 
 fn seed_default_teacher(conn: &Connection) -> Result<(), String> {
     let count: i64 = conn
-        .query_row("SELECT COUNT(*) FROM teachers WHERE account = 'yaoyao'", [], |row| row.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM teachers WHERE account = 'yaoyao'",
+            [],
+            |row| row.get(0),
+        )
         .map_err(|error| error.to_string())?;
     if count == 0 {
         let now = now_text();
@@ -492,10 +764,17 @@ fn query_options(conn: &Connection, question_id: i64) -> Result<Vec<QuestionOpti
             })
         })
         .map_err(|error| error.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|error| error.to_string())
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())
 }
 
-fn query_names(conn: &Connection, table: &str, link_table: &str, link_column: &str, question_id: i64) -> Result<Vec<String>, String> {
+fn query_names(
+    conn: &Connection,
+    table: &str,
+    link_table: &str,
+    link_column: &str,
+    question_id: i64,
+) -> Result<Vec<String>, String> {
     let sql = format!(
         "SELECT t.name FROM {table} t
          INNER JOIN {link_table} l ON l.{link_column} = t.id
@@ -503,24 +782,50 @@ fn query_names(conn: &Connection, table: &str, link_table: &str, link_column: &s
          ORDER BY t.name ASC"
     );
     let mut stmt = conn.prepare(&sql).map_err(|error| error.to_string())?;
-    let rows = stmt.query_map([question_id], |row| row.get(0)).map_err(|error| error.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|error| error.to_string())
-}
-
-fn get_or_create_name(conn: &Connection, table: &str, name: &str) -> Result<i64, String> {
-    conn.execute(&format!("INSERT OR IGNORE INTO {table} (name) VALUES (?1)"), [name])
+    let rows = stmt
+        .query_map([question_id], |row| row.get(0))
         .map_err(|error| error.to_string())?;
-    conn.query_row(&format!("SELECT id FROM {table} WHERE name = ?1"), [name], |row| row.get(0))
+    rows.collect::<Result<Vec<_>, _>>()
         .map_err(|error| error.to_string())
 }
 
-fn save_name_links(conn: &Connection, question_id: i64, table: &str, link_table: &str, link_column: &str, names: &[String]) -> Result<(), String> {
-    conn.execute(&format!("DELETE FROM {link_table} WHERE question_id = ?1"), [question_id])
-        .map_err(|error| error.to_string())?;
-    for name in names.iter().map(|item| item.trim()).filter(|item| !item.is_empty()) {
+fn get_or_create_name(conn: &Connection, table: &str, name: &str) -> Result<i64, String> {
+    conn.execute(
+        &format!("INSERT OR IGNORE INTO {table} (name) VALUES (?1)"),
+        [name],
+    )
+    .map_err(|error| error.to_string())?;
+    conn.query_row(
+        &format!("SELECT id FROM {table} WHERE name = ?1"),
+        [name],
+        |row| row.get(0),
+    )
+    .map_err(|error| error.to_string())
+}
+
+fn save_name_links(
+    conn: &Connection,
+    question_id: i64,
+    table: &str,
+    link_table: &str,
+    link_column: &str,
+    names: &[String],
+) -> Result<(), String> {
+    conn.execute(
+        &format!("DELETE FROM {link_table} WHERE question_id = ?1"),
+        [question_id],
+    )
+    .map_err(|error| error.to_string())?;
+    for name in names
+        .iter()
+        .map(|item| item.trim())
+        .filter(|item| !item.is_empty())
+    {
         let id = get_or_create_name(conn, table, name)?;
         conn.execute(
-            &format!("INSERT OR IGNORE INTO {link_table} (question_id, {link_column}) VALUES (?1, ?2)"),
+            &format!(
+                "INSERT OR IGNORE INTO {link_table} (question_id, {link_column}) VALUES (?1, ?2)"
+            ),
             params![question_id, id],
         )
         .map_err(|error| error.to_string())?;
@@ -560,7 +865,13 @@ fn fetch_question(conn: &Connection, id: i64) -> Result<Question, String> {
         .map_err(|error| error.to_string())?;
     question.options = query_options(conn, id)?;
     question.tags = query_names(conn, "tags", "question_tags", "tag_id", id)?;
-    question.knowledge_points = query_names(conn, "knowledge_points", "question_knowledge_points", "knowledge_point_id", id)?;
+    question.knowledge_points = query_names(
+        conn,
+        "knowledge_points",
+        "question_knowledge_points",
+        "knowledge_point_id",
+        id,
+    )?;
     Ok(question)
 }
 
@@ -593,7 +904,9 @@ fn category_descendant_ids(conn: &Connection, category_id: i64) -> Result<Vec<i6
         let mut stmt = conn
             .prepare("SELECT id FROM question_categories WHERE parent_id = ?1 ORDER BY sort_order ASC, id ASC")
             .map_err(|error| error.to_string())?;
-        let rows = stmt.query_map([parent_id], |row| row.get::<_, i64>(0)).map_err(|error| error.to_string())?;
+        let rows = stmt
+            .query_map([parent_id], |row| row.get::<_, i64>(0))
+            .map_err(|error| error.to_string())?;
         for row in rows {
             let id = row.map_err(|error| error.to_string())?;
             if !ids.contains(&id) {
@@ -605,7 +918,11 @@ fn category_descendant_ids(conn: &Connection, category_id: i64) -> Result<Vec<i6
     Ok(ids)
 }
 
-fn question_matches_filters(question: &Question, filters: &QuestionQueryFilters, category_ids: &[i64]) -> bool {
+fn question_matches_filters(
+    question: &Question,
+    filters: &QuestionQueryFilters,
+    category_ids: &[i64],
+) -> bool {
     if !category_ids.is_empty() {
         match question.category_id {
             Some(id) if category_ids.contains(&id) => {}
@@ -618,11 +935,19 @@ fn question_matches_filters(question: &Question, filters: &QuestionQueryFilters,
     if !filters.year.trim().is_empty() && question.year != filters.year.trim() {
         return false;
     }
-    if !filters.tag.trim().is_empty() && !question.tags.iter().any(|item| item.contains(filters.tag.trim())) {
+    if !filters.tag.trim().is_empty()
+        && !question
+            .tags
+            .iter()
+            .any(|item| item.contains(filters.tag.trim()))
+    {
         return false;
     }
     if !filters.knowledge_point.trim().is_empty()
-        && !question.knowledge_points.iter().any(|item| item.contains(filters.knowledge_point.trim()))
+        && !question
+            .knowledge_points
+            .iter()
+            .any(|item| item.contains(filters.knowledge_point.trim()))
     {
         return false;
     }
@@ -669,7 +994,11 @@ fn save_data_library_path(app: &AppHandle, root: PathBuf) -> Result<AppSettings,
     };
     init_library(&data_root)?;
     let conn = open_config_db(app)?;
-    set_setting(&conn, SETTING_DATA_LIBRARY_PATH, &data_root.to_string_lossy())?;
+    set_setting(
+        &conn,
+        SETTING_DATA_LIBRARY_PATH,
+        &data_root.to_string_lossy(),
+    )?;
     read_settings(app)
 }
 
@@ -717,8 +1046,11 @@ fn teacher_list(app: AppHandle) -> Result<Vec<Teacher>, String> {
     let mut stmt = conn
         .prepare("SELECT id, account, name, phone, remark, status, created_at, updated_at FROM teachers ORDER BY id DESC")
         .map_err(|error| error.to_string())?;
-    let rows = stmt.query_map([], row_to_teacher).map_err(|error| error.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|error| error.to_string())
+    let rows = stmt
+        .query_map([], row_to_teacher)
+        .map_err(|error| error.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -744,7 +1076,11 @@ fn teacher_save(app: AppHandle, teacher: Teacher) -> Result<Teacher, String> {
         }
         fetch_teacher(&conn, teacher.id)
     } else {
-        let password = if teacher.password.trim().is_empty() { "123456".to_string() } else { teacher.password };
+        let password = if teacher.password.trim().is_empty() {
+            "123456".to_string()
+        } else {
+            teacher.password
+        };
         conn.execute(
             "INSERT INTO teachers (account, password, name, phone, remark, status, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)",
@@ -767,8 +1103,11 @@ fn fetch_teacher(conn: &Connection, id: i64) -> Result<Teacher, String> {
 #[tauri::command]
 fn teacher_delete(app: AppHandle, id: i64) -> Result<bool, String> {
     let conn = open_library_db(&app)?;
-    conn.execute("DELETE FROM teachers WHERE id = ?1 AND account <> 'yaoyao'", [id])
-        .map_err(|error| error.to_string())?;
+    conn.execute(
+        "DELETE FROM teachers WHERE id = ?1 AND account <> 'yaoyao'",
+        [id],
+    )
+    .map_err(|error| error.to_string())?;
     Ok(true)
 }
 
@@ -778,8 +1117,11 @@ fn student_list(app: AppHandle) -> Result<Vec<Student>, String> {
     let mut stmt = conn
         .prepare("SELECT id, name, phone, grade, school, remark, created_at, updated_at FROM students ORDER BY id DESC")
         .map_err(|error| error.to_string())?;
-    let rows = stmt.query_map([], row_to_student).map_err(|error| error.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|error| error.to_string())
+    let rows = stmt
+        .query_map([], row_to_student)
+        .map_err(|error| error.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -800,7 +1142,14 @@ fn student_save(app: AppHandle, student: Student) -> Result<Student, String> {
         conn.execute(
             "INSERT INTO students (name, phone, grade, school, remark, created_at, updated_at)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)",
-            params![student.name, student.phone, student.grade, student.school, student.remark, now],
+            params![
+                student.name,
+                student.phone,
+                student.grade,
+                student.school,
+                student.remark,
+                now
+            ],
         )
         .map_err(|error| error.to_string())?;
         fetch_student(&conn, conn.last_insert_rowid())
@@ -819,7 +1168,8 @@ fn fetch_student(conn: &Connection, id: i64) -> Result<Student, String> {
 #[tauri::command]
 fn student_delete(app: AppHandle, id: i64) -> Result<bool, String> {
     let conn = open_library_db(&app)?;
-    conn.execute("DELETE FROM students WHERE id = ?1", [id]).map_err(|error| error.to_string())?;
+    conn.execute("DELETE FROM students WHERE id = ?1", [id])
+        .map_err(|error| error.to_string())?;
     Ok(true)
 }
 
@@ -829,8 +1179,11 @@ fn category_list(app: AppHandle) -> Result<Vec<QuestionCategory>, String> {
     let mut stmt = conn
         .prepare("SELECT id, parent_id, name, sort_order, created_at, updated_at FROM question_categories ORDER BY sort_order ASC, id ASC")
         .map_err(|error| error.to_string())?;
-    let rows = stmt.query_map([], row_to_category).map_err(|error| error.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|error| error.to_string())
+    let rows = stmt
+        .query_map([], row_to_category)
+        .map_err(|error| error.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -870,15 +1223,22 @@ fn fetch_category(conn: &Connection, id: i64) -> Result<QuestionCategory, String
 #[tauri::command]
 fn category_delete(app: AppHandle, id: i64) -> Result<bool, String> {
     let conn = open_library_db(&app)?;
-    conn.execute("UPDATE questions SET category_id = NULL WHERE category_id = ?1", [id])
-        .map_err(|error| error.to_string())?;
+    conn.execute(
+        "UPDATE questions SET category_id = NULL WHERE category_id = ?1",
+        [id],
+    )
+    .map_err(|error| error.to_string())?;
     conn.execute("DELETE FROM question_categories WHERE id = ?1", [id])
         .map_err(|error| error.to_string())?;
     Ok(true)
 }
 
 #[tauri::command]
-fn question_list(app: AppHandle, category_id: Option<i64>, keyword: Option<String>) -> Result<Vec<Question>, String> {
+fn question_list(
+    app: AppHandle,
+    category_id: Option<i64>,
+    keyword: Option<String>,
+) -> Result<Vec<Question>, String> {
     let conn = open_library_db(&app)?;
     let keyword_text = keyword.unwrap_or_default();
     let like_keyword = format!("%{}%", keyword_text.trim());
@@ -901,7 +1261,10 @@ fn question_list(app: AppHandle, category_id: Option<i64>, keyword: Option<Strin
             .query_map(params![id, like_keyword], |row| row.get::<_, i64>(0))
             .map_err(|error| error.to_string())?;
         for row_id in ids {
-            questions.push(fetch_question(&conn, row_id.map_err(|error| error.to_string())?)?);
+            questions.push(fetch_question(
+                &conn,
+                row_id.map_err(|error| error.to_string())?,
+            )?);
         }
     } else {
         let mut stmt = conn
@@ -920,7 +1283,10 @@ fn question_list(app: AppHandle, category_id: Option<i64>, keyword: Option<Strin
             .query_map([like_keyword], |row| row.get::<_, i64>(0))
             .map_err(|error| error.to_string())?;
         for row_id in ids {
-            questions.push(fetch_question(&conn, row_id.map_err(|error| error.to_string())?)?);
+            questions.push(fetch_question(
+                &conn,
+                row_id.map_err(|error| error.to_string())?,
+            )?);
         }
     }
     Ok(questions)
@@ -962,7 +1328,9 @@ fn question_query(app: AppHandle, filters: QuestionQueryFilters) -> Result<Vec<Q
     let mut stmt = conn
         .prepare("SELECT id FROM questions ORDER BY id DESC")
         .map_err(|error| error.to_string())?;
-    let rows = stmt.query_map([], |row| row.get::<_, i64>(0)).map_err(|error| error.to_string())?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, i64>(0))
+        .map_err(|error| error.to_string())?;
     let mut questions = Vec::new();
     for row in rows {
         let question = fetch_question(&conn, row.map_err(|error| error.to_string())?)?;
@@ -1029,8 +1397,11 @@ fn question_save(app: AppHandle, question: QuestionPayload) -> Result<Question, 
         .map_err(|error| error.to_string())?;
         tx.last_insert_rowid()
     };
-    tx.execute("DELETE FROM question_options WHERE question_id = ?1", [question_id])
-        .map_err(|error| error.to_string())?;
+    tx.execute(
+        "DELETE FROM question_options WHERE question_id = ?1",
+        [question_id],
+    )
+    .map_err(|error| error.to_string())?;
     for option in question.options {
         tx.execute(
             "INSERT INTO question_options (question_id, option_key, content, sort_order) VALUES (?1, ?2, ?3, ?4)",
@@ -1038,7 +1409,14 @@ fn question_save(app: AppHandle, question: QuestionPayload) -> Result<Question, 
         )
         .map_err(|error| error.to_string())?;
     }
-    save_name_links(&tx, question_id, "tags", "question_tags", "tag_id", &question.tags)?;
+    save_name_links(
+        &tx,
+        question_id,
+        "tags",
+        "question_tags",
+        "tag_id",
+        &question.tags,
+    )?;
     save_name_links(
         &tx,
         question_id,
@@ -1059,9 +1437,13 @@ fn question_delete(app: AppHandle, id: i64) -> Result<bool, String> {
         .map_err(|error| error.to_string())?;
     conn.execute("DELETE FROM question_tags WHERE question_id = ?1", [id])
         .map_err(|error| error.to_string())?;
-    conn.execute("DELETE FROM question_knowledge_points WHERE question_id = ?1", [id])
+    conn.execute(
+        "DELETE FROM question_knowledge_points WHERE question_id = ?1",
+        [id],
+    )
+    .map_err(|error| error.to_string())?;
+    conn.execute("DELETE FROM questions WHERE id = ?1", [id])
         .map_err(|error| error.to_string())?;
-    conn.execute("DELETE FROM questions WHERE id = ?1", [id]).map_err(|error| error.to_string())?;
     Ok(true)
 }
 
@@ -1075,8 +1457,11 @@ fn paper_list(app: AppHandle) -> Result<Vec<Paper>, String> {
              ORDER BY updated_at DESC, id DESC",
         )
         .map_err(|error| error.to_string())?;
-    let rows = stmt.query_map([], row_to_paper).map_err(|error| error.to_string())?;
-    rows.collect::<Result<Vec<_>, _>>().map_err(|error| error.to_string())
+    let rows = stmt
+        .query_map([], row_to_paper)
+        .map_err(|error| error.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]
@@ -1090,7 +1475,9 @@ fn paper_get(app: AppHandle, id: i64) -> Result<PaperDetail, String> {
              ORDER BY sort_order ASC, id ASC",
         )
         .map_err(|error| error.to_string())?;
-    let rows = stmt.query_map([id], |row| row.get::<_, i64>(0)).map_err(|error| error.to_string())?;
+    let rows = stmt
+        .query_map([id], |row| row.get::<_, i64>(0))
+        .map_err(|error| error.to_string())?;
     let mut questions = Vec::new();
     for row in rows {
         if let Ok(question) = fetch_question(&conn, row.map_err(|error| error.to_string())?) {
@@ -1126,7 +1513,13 @@ fn paper_save(app: AppHandle, paper: PaperPayload) -> Result<PaperDetail, String
     tx.execute(
         "INSERT INTO papers (title, remark, question_count, created_by, created_at, updated_at)
          VALUES (?1, ?2, ?3, ?4, ?5, ?5)",
-        params![paper.title.trim(), paper.remark.trim(), question_ids.len() as i64, paper.created_by.trim(), now],
+        params![
+            paper.title.trim(),
+            paper.remark.trim(),
+            question_ids.len() as i64,
+            paper.created_by.trim(),
+            now
+        ],
     )
     .map_err(|error| error.to_string())?;
     let paper_id = tx.last_insert_rowid();
@@ -1153,12 +1546,17 @@ fn paper_delete(app: AppHandle, id: i64) -> Result<bool, String> {
     let conn = open_library_db(&app)?;
     conn.execute("DELETE FROM paper_questions WHERE paper_id = ?1", [id])
         .map_err(|error| error.to_string())?;
-    conn.execute("DELETE FROM papers WHERE id = ?1", [id]).map_err(|error| error.to_string())?;
+    conn.execute("DELETE FROM papers WHERE id = ?1", [id])
+        .map_err(|error| error.to_string())?;
     Ok(true)
 }
 
 #[tauri::command]
-fn import_asset(app: AppHandle, source_path: String, question_id: Option<i64>) -> Result<AssetRecord, String> {
+fn import_asset(
+    app: AppHandle,
+    source_path: String,
+    question_id: Option<i64>,
+) -> Result<AssetRecord, String> {
     let source = PathBuf::from(source_path);
     if !source.exists() || !source.is_file() {
         return Err("图片文件不存在".to_string());
@@ -1166,27 +1564,59 @@ fn import_asset(app: AppHandle, source_path: String, question_id: Option<i64>) -
     let root = data_library_root(&app)?;
     let bytes = fs::read(&source).map_err(|error| error.to_string())?;
     let hash = format!("{:x}", Sha256::digest(&bytes));
-    let ext = source.extension().and_then(|item| item.to_str()).unwrap_or("png");
-    let file_name = format!("{}-{}.{}", Local::now().format("%Y%m%d%H%M%S"), &hash[..12], ext);
+    let ext = source
+        .extension()
+        .and_then(|item| item.to_str())
+        .unwrap_or("png");
+    let file_name = format!(
+        "{}-{}.{}",
+        Local::now().format("%Y%m%d%H%M%S"),
+        &hash[..12],
+        ext
+    );
     let relative_path = format!("assets/images/{file_name}");
     let target = root.join(&relative_path);
     fs::copy(&source, &target).map_err(|error| error.to_string())?;
     let thumb_path = format!("assets/thumbs/{file_name}");
     fs::copy(&source, root.join(&thumb_path)).map_err(|error| error.to_string())?;
-    insert_asset(&app, question_id, "image", &relative_path, &thumb_path, mime_from_ext(ext), &hash, bytes.len() as i64)
+    insert_asset(
+        &app,
+        question_id,
+        "image",
+        &relative_path,
+        &thumb_path,
+        mime_from_ext(ext),
+        &hash,
+        bytes.len() as i64,
+    )
 }
 
 #[tauri::command]
-fn save_board(app: AppHandle, question_id: Option<i64>, board_json: String, preview_data_url: String) -> Result<AssetRecord, String> {
+fn save_board(
+    app: AppHandle,
+    question_id: Option<i64>,
+    board_json: String,
+    preview_data_url: String,
+) -> Result<AssetRecord, String> {
     let root = data_library_root(&app)?;
     let id = Uuid::new_v4().to_string();
     let board_relative = format!("assets/boards/{id}.json");
     let preview_relative = format!("assets/thumbs/{id}.png");
-    fs::write(root.join(&board_relative), board_json.as_bytes()).map_err(|error| error.to_string())?;
+    fs::write(root.join(&board_relative), board_json.as_bytes())
+        .map_err(|error| error.to_string())?;
     let preview_bytes = decode_data_url(&preview_data_url)?;
     fs::write(root.join(&preview_relative), &preview_bytes).map_err(|error| error.to_string())?;
     let hash = format!("{:x}", Sha256::digest(board_json.as_bytes()));
-    insert_asset(&app, question_id, "canvas", &board_relative, &preview_relative, "application/json", &hash, board_json.len() as i64)
+    insert_asset(
+        &app,
+        question_id,
+        "canvas",
+        &board_relative,
+        &preview_relative,
+        "application/json",
+        &hash,
+        board_json.len() as i64,
+    )
 }
 
 #[tauri::command]
@@ -1194,11 +1624,95 @@ fn export_question(app: AppHandle, id: i64) -> Result<String, String> {
     let root = data_library_root(&app)?;
     let conn = open_library_db(&app)?;
     let question = fetch_question(&conn, id)?;
-    let file_name = format!("question-{}-{}.json", id, Local::now().format("%Y%m%d%H%M%S"));
+    let file_name = format!(
+        "question-{}-{}.json",
+        id,
+        Local::now().format("%Y%m%d%H%M%S")
+    );
     let relative_path = format!("assets/exports/{file_name}");
     let json = serde_json::to_string_pretty(&question).map_err(|error| error.to_string())?;
     fs::write(root.join(&relative_path), json).map_err(|error| error.to_string())?;
     Ok(root.join(relative_path).to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn export_data_backup(app: AppHandle) -> Result<BackupResult, String> {
+    let root = data_library_root(&app)?;
+    init_library(&root)?;
+    let now = Local::now();
+    let created_at = now.format("%Y-%m-%d %H:%M:%S").to_string();
+    let timestamp = now.format("%Y%m%d%H%M%S").to_string();
+    let backups_dir = root.join("backups");
+    let work_dir = unique_child_path(&backups_dir, &format!("export-{timestamp}"));
+    fs::create_dir_all(&work_dir).map_err(io_error)?;
+    let snapshot_db = work_dir.join("coscool.sqlite");
+    let conn = open_library_db(&app)?;
+    conn.execute_batch(&format!(
+        "VACUUM INTO '{}'",
+        sqlite_string_literal(&snapshot_db)
+    ))
+    .map_err(|error| error.to_string())?;
+    let backup_path = unique_child_path(&backups_dir, &format!("coscool-backup-{timestamp}.zip"));
+    let manifest = BackupManifest {
+        app: BACKUP_APP_NAME.to_string(),
+        version: BACKUP_VERSION,
+        created_at: created_at.clone(),
+    };
+    let result = write_backup_zip(&backup_path, &snapshot_db, &root, &manifest);
+    let _ = fs::remove_dir_all(&work_dir);
+    if let Err(error) = result {
+        let _ = fs::remove_file(&backup_path);
+        return Err(error);
+    }
+    Ok(BackupResult {
+        file_path: backup_path.to_string_lossy().to_string(),
+        created_at,
+    })
+}
+
+#[tauri::command]
+fn restore_data_backup(app: AppHandle, source_path: String) -> Result<BackupResult, String> {
+    let source = PathBuf::from(source_path.trim());
+    if source.as_os_str().is_empty() {
+        return Err("请选择备份文件".to_string());
+    }
+    if !source.exists() || !source.is_file() {
+        return Err("备份文件不存在".to_string());
+    }
+    if source
+        .extension()
+        .and_then(|item| item.to_str())
+        .map(|item| item.to_ascii_lowercase())
+        != Some("zip".to_string())
+    {
+        return Err("请选择 zip 格式备份文件".to_string());
+    }
+    let root = data_library_root(&app)?;
+    init_library(&root)?;
+    let now = Local::now();
+    let created_at = now.format("%Y-%m-%d %H:%M:%S").to_string();
+    let timestamp = now.format("%Y%m%d%H%M%S").to_string();
+    let imports_dir = root.join("imports");
+    let staging_root = unique_child_path(&imports_dir, &format!("restore-{timestamp}"));
+    fs::create_dir_all(&staging_root).map_err(io_error)?;
+    let result = (|| {
+        let file = File::open(&source).map_err(io_error)?;
+        let mut archive = ZipArchive::new(file).map_err(zip_error)?;
+        read_backup_manifest(&mut archive)?;
+        if archive.by_name("coscool.sqlite").is_err() {
+            return Err("备份文件缺少 coscool.sqlite".to_string());
+        }
+        extract_backup_archive(&mut archive, &staging_root)?;
+        validate_restored_database(&staging_root.join("coscool.sqlite"))?;
+        replace_library_data(&root, &staging_root)?;
+        Ok(())
+    })();
+    let _ = fs::remove_dir_all(&staging_root);
+    result?;
+    Ok(BackupResult {
+        file_path: source.to_string_lossy().to_string(),
+        created_at,
+    })
 }
 
 #[tauri::command]
@@ -1208,7 +1722,11 @@ fn read_asset_data_url(app: AppHandle, relative_path: String) -> Result<AssetDat
         return Err("资源路径不能为空".to_string());
     }
     let relative = Path::new(path_text);
-    if relative.is_absolute() || relative.components().any(|part| !matches!(part, Component::Normal(_))) {
+    if relative.is_absolute()
+        || relative
+            .components()
+            .any(|part| !matches!(part, Component::Normal(_)))
+    {
         return Err("资源路径不合法".to_string());
     }
     let root = data_library_root(&app)?;
@@ -1217,7 +1735,10 @@ fn read_asset_data_url(app: AppHandle, relative_path: String) -> Result<AssetDat
         return Err("图片不存在".to_string());
     }
     let bytes = fs::read(&target).map_err(|error| error.to_string())?;
-    let ext = target.extension().and_then(|item| item.to_str()).unwrap_or("png");
+    let ext = target
+        .extension()
+        .and_then(|item| item.to_str())
+        .unwrap_or("png");
     let mime_type = mime_from_ext(ext).to_string();
     Ok(AssetDataUrl {
         data_url: format!("data:{};base64,{}", mime_type, STANDARD.encode(bytes)),
@@ -1300,7 +1821,10 @@ fn mime_from_ext(ext: &str) -> &'static str {
 }
 
 fn decode_data_url(data_url: &str) -> Result<Vec<u8>, String> {
-    let payload = data_url.split_once(',').map(|(_, data)| data).unwrap_or(data_url);
+    let payload = data_url
+        .split_once(',')
+        .map(|(_, data)| data)
+        .unwrap_or(data_url);
     STANDARD.decode(payload).map_err(|error| error.to_string())
 }
 
@@ -1338,6 +1862,8 @@ pub fn run() {
             import_asset,
             save_board,
             export_question,
+            export_data_backup,
+            restore_data_backup,
             save_export_file,
             read_asset_data_url
         ])

@@ -57,6 +57,7 @@ import type { UpdateCheckResult } from '../api/native'
 import {
   checkAppUpdate,
   formatUpdateError,
+  getCurrentVersion,
   installAppUpdate,
   isTauriRuntime
 } from '../api/native'
@@ -71,6 +72,7 @@ interface UpdateNotificationPayload {
   latestVersion: string
   body: string
   checkedAt: string
+  installed?: boolean
 }
 
 interface AppNotification {
@@ -86,15 +88,29 @@ interface AppNotification {
 const simpleEmptyImage = Empty.PRESENTED_IMAGE_SIMPLE
 const popoverOpen = ref(false)
 const notifications = ref<AppNotification[]>(loadNotifications())
+const currentAppVersion = ref('')
 const updateCache = new Map<string, AvailableUpdate>()
 const unreadCount = computed(() => notifications.value.filter(item => !item.read).length)
 
-onMounted(checkUpdateNotice)
+onMounted(initUpdateNotifications)
+
+async function initUpdateNotifications() {
+  if (!isTauriRuntime()) return
+  try {
+    currentAppVersion.value = await getCurrentVersion()
+    markInstalledNotifications(currentAppVersion.value)
+  } catch {
+    currentAppVersion.value = ''
+  }
+  await checkUpdateNotice()
+}
 
 async function checkUpdateNotice() {
   if (!isTauriRuntime()) return
   try {
     const result = await checkAppUpdate()
+    currentAppVersion.value = result.currentVersion
+    markInstalledNotifications(result.currentVersion)
     if (!result.update) return
     const id = `${UPDATE_NOTIFICATION_PREFIX}${result.update.version}`
     updateCache.set(id, result.update)
@@ -114,8 +130,8 @@ function upsertUpdateNotification(id: string, updateInfo: UpdateNotificationPayl
   const nextItem: AppNotification = {
     id,
     type: 'app-update',
-    title: `发现新版本 ${updateInfo.latestVersion}`,
-    summary: `当前版本 ${updateInfo.currentVersion}，点击查看更新内容。`,
+    title: getNotificationTitle(updateInfo),
+    summary: getNotificationSummary(updateInfo),
     createdAt: existing?.createdAt || updateInfo.checkedAt,
     read: existing?.read || false,
     updateInfo
@@ -150,6 +166,23 @@ function markAllAsRead() {
   if (!unreadCount.value) return
   notifications.value = notifications.value.map(item => ({ ...item, read: true }))
   saveNotifications()
+}
+
+function markInstalledNotifications(version: string) {
+  if (!version) return
+  let changed = false
+  notifications.value = notifications.value.map(item => {
+    if (!isVersionInstalled(version, item.updateInfo.latestVersion) || item.updateInfo.installed) return item
+    changed = true
+    const updateInfo = { ...item.updateInfo, currentVersion: version, installed: true }
+    return {
+      ...item,
+      title: getNotificationTitle(updateInfo),
+      summary: getNotificationSummary(updateInfo),
+      updateInfo
+    }
+  })
+  if (changed) saveNotifications()
 }
 
 function loadNotifications(): AppNotification[] {
@@ -197,11 +230,15 @@ function openUpdateModal(item: AppNotification) {
   let statusText = ''
   let downloadedBytes = 0
   let totalBytes = 0
+  let alreadyInstalled = isNotificationInstalled(item)
   let modalRef: ReturnType<typeof Modal.confirm>
 
   const renderContent = () => h('div', { class: 'update-notice-modal' }, [
     h('p', `当前版本：${item.updateInfo.currentVersion}`),
     h('p', `最新版本：${item.updateInfo.latestVersion}`),
+    alreadyInstalled
+      ? h('div', { class: 'update-installed-tip' }, '当前客户端已更新到该版本，无需重复更新。')
+      : null,
     h('div', { class: 'update-notice-body-wrap' }, [
       h('p', '更新内容：'),
       h('pre', { class: 'update-notice-body' }, item.updateInfo.body || '本次更新暂无详细说明。')
@@ -219,18 +256,21 @@ function openUpdateModal(item: AppNotification) {
   const refreshModal = () => {
     modalRef.update({
       content: renderContent(),
-      okText: installing ? '正在更新' : '立即更新',
-      okButtonProps: { loading: installing, disabled: installing },
+      okText: alreadyInstalled ? '已更新' : installing ? '正在更新' : '立即更新',
+      okButtonProps: { loading: installing, disabled: alreadyInstalled || installing },
       cancelButtonProps: { disabled: installing }
     })
   }
 
   modalRef = Modal.confirm({
     title: '发现新版本',
+    width: 680,
     content: renderContent(),
-    okText: '立即更新',
-    cancelText: '暂不更新',
+    okText: alreadyInstalled ? '已更新' : '立即更新',
+    cancelText: alreadyInstalled ? '关闭' : '暂不更新',
+    okButtonProps: { disabled: alreadyInstalled },
     onOk: async () => {
+      if (alreadyInstalled) return
       if (installing) return Promise.reject()
       installing = true
       progress = 0
@@ -257,6 +297,8 @@ function openUpdateModal(item: AppNotification) {
           if (event.event === 'Finished') {
             progress = 100
             statusText = '更新安装完成，正在重启'
+            alreadyInstalled = true
+            markUpdateInstalled(item.id)
             refreshModal()
           }
         })
@@ -280,6 +322,60 @@ async function resolveUpdate(item: AppNotification): Promise<AvailableUpdate> {
   }
   updateCache.set(item.id, result.update)
   return result.update
+}
+
+function markUpdateInstalled(id: string) {
+  let changed = false
+  notifications.value = notifications.value.map(item => {
+    if (item.id !== id || item.updateInfo.installed) return item
+    changed = true
+    const updateInfo = { ...item.updateInfo, installed: true }
+    return {
+      ...item,
+      title: getNotificationTitle(updateInfo),
+      summary: getNotificationSummary(updateInfo),
+      updateInfo
+    }
+  })
+  if (changed) saveNotifications()
+}
+
+function isNotificationInstalled(item: AppNotification) {
+  return Boolean(item.updateInfo.installed) ||
+    isVersionInstalled(currentAppVersion.value || item.updateInfo.currentVersion, item.updateInfo.latestVersion)
+}
+
+function isVersionInstalled(currentVersion: string, latestVersion: string) {
+  return compareVersions(currentVersion, latestVersion) >= 0
+}
+
+function compareVersions(currentVersion: string, latestVersion: string) {
+  const currentParts = parseVersionParts(currentVersion)
+  const latestParts = parseVersionParts(latestVersion)
+  const length = Math.max(currentParts.length, latestParts.length)
+  for (let index = 0; index < length; index += 1) {
+    const current = currentParts[index] || 0
+    const latest = latestParts[index] || 0
+    if (current !== latest) return current > latest ? 1 : -1
+  }
+  return 0
+}
+
+function parseVersionParts(version: string) {
+  return version
+    .replace(/^v/i, '')
+    .split(/[^\d]+/)
+    .filter(Boolean)
+    .map(part => Number(part))
+}
+
+function getNotificationTitle(updateInfo: UpdateNotificationPayload) {
+  return updateInfo.installed ? `已更新到 ${updateInfo.latestVersion}` : `发现新版本 ${updateInfo.latestVersion}`
+}
+
+function getNotificationSummary(updateInfo: UpdateNotificationPayload) {
+  if (updateInfo.installed) return `当前客户端已更新到 ${updateInfo.latestVersion}。`
+  return `当前版本 ${updateInfo.currentVersion}，点击查看更新内容。`
 }
 </script>
 
@@ -451,6 +547,20 @@ async function resolveUpdate(item: AppNotification): Promise<AvailableUpdate> {
   margin: 0 0 8px;
 }
 
+:global(.update-notice-modal) {
+  color: #314052;
+}
+
+:global(.update-installed-tip) {
+  background: #eefaf8;
+  border: 1px solid #bfe5df;
+  border-radius: 8px;
+  color: #0f8f83;
+  font-weight: 600;
+  margin: 8px 0 10px;
+  padding: 9px 12px;
+}
+
 :global(.update-notice-body-wrap) {
   margin-top: 10px;
 }
@@ -461,9 +571,10 @@ async function resolveUpdate(item: AppNotification): Promise<AvailableUpdate> {
   border-radius: 8px;
   color: #314052;
   margin: 6px 0 0;
-  max-height: 240px;
+  max-height: 360px;
+  min-height: 160px;
   overflow: auto;
-  padding: 10px 12px;
+  padding: 12px 14px;
   white-space: pre-wrap;
   word-break: break-word;
 }
