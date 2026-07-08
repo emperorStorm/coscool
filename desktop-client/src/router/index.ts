@@ -32,6 +32,7 @@ const router = createRouter({
         { path: 'questions/query', component: QuestionQueryView },
         { path: 'questions/papers', component: PaperMaintenanceView },
         { path: 'questions/paper-assemble', component: PaperAssembleView },
+        { path: 'basic/knowledge-points', component: () => import('../views/KnowledgePointMaintenanceView.vue') },
         { path: 'settings', component: SettingsView }
       ]
     }

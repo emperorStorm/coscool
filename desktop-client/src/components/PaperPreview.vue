@@ -20,7 +20,15 @@
         <div v-if="question.options.length && isChoiceQuestion(question.questionType)" class="option-grid">
           <div v-for="option in question.options" :key="option.optionKey" class="option-item">
             <strong>{{ option.optionKey }}.</strong>
-            <MathText :content="option.content || '-'" />
+            <span>
+              <MathText :content="option.content || '-'" />
+              <img
+                v-if="optionImageMap?.[getOptionImageKey(question.id, option.optionKey)]"
+                class="option-image"
+                :src="optionImageMap[getOptionImageKey(question.id, option.optionKey)]"
+                alt="选项图片"
+              />
+            </span>
           </div>
         </div>
         <div v-if="showAnswer || showAnalysis" class="answer-block">
@@ -55,11 +63,13 @@
 <script setup lang="ts">
 import MathText from './MathText.vue'
 import type { Question } from '../api/native'
+import { getOptionImageKey } from '../utils/questionAssets'
 
 defineProps<{
   title: string
   questions: Question[]
   imageMap: Record<number, string>
+  optionImageMap?: Record<string, string>
   showAnswer?: boolean
   showAnalysis?: boolean
   showKnowledgePoints?: boolean
@@ -175,6 +185,20 @@ function isChoiceQuestion(questionType: string) {
 
 .option-item :deep(.math-text) {
   min-width: 0;
+}
+
+.option-item > span {
+  min-width: 0;
+}
+
+.option-image {
+  display: block;
+  max-width: 100%;
+  max-height: 120px;
+  margin-top: 6px;
+  object-fit: contain;
+  border: 1px solid #e2e9f0;
+  border-radius: 6px;
 }
 
 .answer-block {

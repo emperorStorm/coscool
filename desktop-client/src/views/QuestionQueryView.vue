@@ -64,7 +64,15 @@
                   <div v-if="question.options.length && isChoiceQuestion(question.questionType)" class="option-grid">
                     <div v-for="option in question.options" :key="option.optionKey" class="option-item">
                       <strong>{{ option.optionKey }}.</strong>
-                      <MathText :content="option.content || '-'" />
+                      <span>
+                        <MathText :content="option.content || '-'" />
+                        <img
+                          v-if="optionImageMap[getOptionImageKey(question.id, option.optionKey)]"
+                          class="option-image"
+                          :src="optionImageMap[getOptionImageKey(question.id, option.optionKey)]"
+                          alt="选项图片"
+                        />
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -202,7 +210,15 @@
             <div class="detail-options">
               <div v-for="option in currentQuestion.options" :key="option.optionKey">
                 <strong>{{ option.optionKey }}.</strong>
-                <MathText :content="option.content || '-'" />
+                <span>
+                  <MathText :content="option.content || '-'" />
+                  <img
+                    v-if="detailOptionImageMap[getOptionImageKey(currentQuestion.id, option.optionKey)]"
+                    class="detail-option-image"
+                    :src="detailOptionImageMap[getOptionImageKey(currentQuestion.id, option.optionKey)]"
+                    alt="选项图片"
+                  />
+                </span>
               </div>
             </div>
           </section>
@@ -242,6 +258,7 @@ import { ShoppingBasket } from 'lucide-vue-next'
 import MathText from '../components/MathText.vue'
 import type { Question, QuestionCategory, QuestionQueryFilters } from '../api/native'
 import { getQuestion, listCategories, queryQuestions, readAssetDataUrl } from '../api/native'
+import { buildOptionImageMap, getOptionImageKey } from '../utils/questionAssets'
 import { addQuestionToPaperCart, getPaperCartIds } from '../utils/paperCart'
 
 interface CategoryTreeOption extends QuestionCategory {
@@ -254,6 +271,8 @@ const detailOpen = ref(false)
 const questions = ref<Question[]>([])
 const currentQuestion = ref<Question>()
 const detailImageUrl = ref('')
+const optionImageMap = ref<Record<string, string>>({})
+const detailOptionImageMap = ref<Record<string, string>>({})
 const cartIds = ref<number[]>([])
 const router = useRouter()
 const categoryNameMap = ref(new Map<number | undefined, string>())
@@ -309,6 +328,7 @@ async function loadQuestions() {
   loading.value = true
   try {
     questions.value = await queryQuestions(filters)
+    optionImageMap.value = await buildOptionImageMap(questions.value, readAssetDataUrl)
   } catch (error) {
     message.error(String(error))
   } finally {
@@ -350,9 +370,11 @@ async function openDetail(id: number) {
   detailOpen.value = true
   detailLoading.value = true
   detailImageUrl.value = ''
+  detailOptionImageMap.value = {}
   try {
     currentQuestion.value = await getQuestion(id)
     await loadDetailImage()
+    detailOptionImageMap.value = await buildOptionImageMap([currentQuestion.value], readAssetDataUrl)
   } catch (error) {
     message.error(String(error))
   } finally {
@@ -648,6 +670,21 @@ function isChoiceQuestion(questionType: string) {
   min-width: 0;
 }
 
+.option-item > span {
+  min-width: 0;
+}
+
+.option-image,
+.detail-option-image {
+  display: block;
+  max-width: 100%;
+  max-height: 110px;
+  margin-top: 6px;
+  object-fit: contain;
+  border: 1px solid #e2e9f0;
+  border-radius: 6px;
+}
+
 .question-card-foot {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -768,6 +805,10 @@ function isChoiceQuestion(questionType: string) {
 }
 
 .detail-options :deep(.math-text) {
+  min-width: 0;
+}
+
+.detail-options span {
   min-width: 0;
 }
 

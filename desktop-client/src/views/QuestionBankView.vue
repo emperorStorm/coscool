@@ -40,7 +40,15 @@
             <div class="option-row">
               <div v-for="option in question.options" :key="option.optionKey" class="option-item">
                 <strong>{{ option.optionKey }}.</strong>
-                <MathText :content="option.content || '-'" />
+                <span>
+                  <MathText :content="option.content || '-'" />
+                  <img
+                    v-if="optionImageMap[getOptionImageKey(question.id, option.optionKey)]"
+                    class="option-image"
+                    :src="optionImageMap[getOptionImageKey(question.id, option.optionKey)]"
+                    alt="选项图片"
+                  />
+                </span>
               </div>
             </div>
           </div>
@@ -72,6 +80,7 @@ import { Search } from 'lucide-vue-next'
 import MathText from '../components/MathText.vue'
 import QuestionCategoryTree from '../components/QuestionCategoryTree.vue'
 import type { Question } from '../api/native'
+import { buildOptionImageMap, buildQuestionImageMap, getOptionImageKey } from '../utils/questionAssets'
 import {
   deleteQuestion,
   getAppSettings,
@@ -86,6 +95,7 @@ const router = useRouter()
 const selectedCategoryId = ref<number | undefined>()
 const keyword = ref('')
 const questionImageMap = ref<Record<number, string>>({})
+const optionImageMap = ref<Record<string, string>>({})
 const questions = ref<Question[]>([])
 
 onMounted(async () => {
@@ -123,19 +133,12 @@ async function loadQuestions() {
 }
 
 async function loadQuestionListImages() {
-  const imageMap: Record<number, string> = {}
-  await Promise.all(
-    questions.value.map(async (question) => {
-      if (!question.imageText || !question.imageText.startsWith('assets/')) return
-      try {
-        const asset = await readAssetDataUrl(question.imageText)
-        imageMap[question.id] = asset.dataUrl
-      } catch {
-        imageMap[question.id] = ''
-      }
-    })
-  )
-  questionImageMap.value = imageMap
+  const [questionMap, optionMap] = await Promise.all([
+    buildQuestionImageMap(questions.value, readAssetDataUrl),
+    buildOptionImageMap(questions.value, readAssetDataUrl)
+  ])
+  questionImageMap.value = questionMap
+  optionImageMap.value = optionMap
 }
 
 function selectCategory(id?: number) {
@@ -147,6 +150,7 @@ async function handleDataRestored() {
   selectedCategoryId.value = undefined
   keyword.value = ''
   questionImageMap.value = {}
+  optionImageMap.value = {}
   await loadQuestions()
 }
 
@@ -398,6 +402,20 @@ function formatDifficulty(difficulty: number) {
 .option-item :deep(.math-text),
 .preview-option-item :deep(.math-text) {
   min-width: 0;
+}
+
+.option-item > span {
+  min-width: 0;
+}
+
+.option-image {
+  display: block;
+  max-width: 100%;
+  max-height: 96px;
+  margin-top: 6px;
+  object-fit: contain;
+  border: 1px solid #e2e9f0;
+  border-radius: 6px;
 }
 
 .card-image {

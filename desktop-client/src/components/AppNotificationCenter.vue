@@ -120,8 +120,8 @@ async function checkUpdateNotice() {
       body: result.update.body || '本次更新暂无详细说明。',
       checkedAt: new Date().toISOString()
     })
-  } catch (error) {
-    message.error(formatUpdateError(error))
+  } catch {
+    return
   }
 }
 

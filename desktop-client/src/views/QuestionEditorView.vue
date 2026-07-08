@@ -112,8 +112,26 @@
               :key="option.optionKey"
               class="entry-card option-card"
             >
-              <label>选项 {{ option.optionKey }}</label>
+              <div class="option-card-head">
+                <label>选项 {{ option.optionKey }}</label>
+                <a-space>
+                  <a-button size="small" @click="addOptionImage(option)">图片</a-button>
+                  <a-button
+                    size="small"
+                    danger
+                    :disabled="questionForm.options.length <= 2"
+                    @click="removeOption(option.optionKey)"
+                  >
+                    删除
+                  </a-button>
+                </a-space>
+              </div>
               <a-textarea v-model:value="option.content" placeholder="..." :rows="3" />
+              <div v-if="option.imageText" class="option-image-row">
+                <img v-if="optionImageMap[option.optionKey]" :src="optionImageMap[option.optionKey]" alt="选项图片预览" />
+                <span v-else class="muted">{{ option.imageText }}</span>
+                <a-button size="small" @click="removeOptionImage(option)">移除图片</a-button>
+              </div>
             </div>
             <div class="option-tools">
               <button
@@ -126,7 +144,6 @@
               >
                 {{ layout.label }}
               </button>
-              <button type="button">模型</button>
               <button type="button" @click="addOption">添加</button>
             </div>
           </div>
@@ -134,14 +151,20 @@
           <div class="entry-card">
             <div class="card-head">
               <label>知识点</label>
-              <a-button size="small">历史数据</a-button>
+              <a-button size="small" @click="loadKnowledgePoints">刷新</a-button>
             </div>
-            <a-select
-              v-model:value="questionForm.knowledgePoints"
-              class="full-width-tag-select"
-              mode="tags"
-              placeholder="知识点，可输入多个"
-              :token-separators="tagSeparators"
+            <a-tree-select
+              v-model:value="questionForm.knowledgePointIds"
+              class="full-width-tree-select"
+              allow-clear
+              show-search
+              tree-checkable
+              tree-node-filter-prop="title"
+              placeholder="请选择知识点"
+              :tree-data="knowledgeTreeOptions"
+              v-model:tree-expanded-keys="knowledgeExpandedKeys"
+              :max-tag-count="6"
+              @change="syncKnowledgePointNames"
             />
           </div>
 
@@ -196,7 +219,10 @@
             >
               <div v-for="option in choiceOptions" :key="option.optionKey" class="preview-option-item">
                 <strong>{{ option.optionKey }}.</strong>
-                <MathText :content="option.content || '未填写'" />
+                <span>
+                  <MathText :content="option.content || '未填写'" />
+                  <img v-if="optionImageMap[option.optionKey]" class="preview-option-image" :src="optionImageMap[option.optionKey]" alt="选项图片预览" />
+                </span>
               </div>
             </div>
           </div>
@@ -243,16 +269,23 @@ import BoardEditor from '../components/BoardEditor.vue'
 import FloatingToolDock from '../components/FloatingToolDock.vue'
 import MathText from '../components/MathText.vue'
 import QuestionCategoryTree from '../components/QuestionCategoryTree.vue'
-import type { QuestionPayload } from '../api/native'
+import type { KnowledgePoint, QuestionOption, QuestionPayload } from '../api/native'
 import {
   getAppSettings,
   getQuestion,
   importAsset,
   initDataLibraryDir,
+  listKnowledgePoints,
   readAssetDataUrl,
   saveBoard,
   saveQuestion
 } from '../api/native'
+
+interface KnowledgeTreeOption {
+  title: string
+  value: number
+  children: KnowledgeTreeOption[]
+}
 
 const route = useRoute()
 const router = useRouter()
@@ -261,6 +294,13 @@ const boardVisible = ref(false)
 const categoryTreeRef = ref<InstanceType<typeof QuestionCategoryTree>>()
 const selectedCategoryId = ref<number | undefined>()
 const questionImageUrl = ref('')
+const optionImageMap = ref<Record<string, string>>({})
+const knowledgePoints = ref<KnowledgePoint[]>([])
+const knowledgeTreeOptions = ref<KnowledgeTreeOption[]>([])
+const knowledgeNameMap = ref(new Map<number, string>())
+const knowledgeIdMap = ref(new Map<string, number>())
+const knowledgeRootKeys = ref<number[]>([])
+const knowledgeExpandedKeys = ref<number[]>([])
 const questionForm = reactive<QuestionPayload>(createEmptyQuestion())
 const questionTypeOptions = ['单选题', '多选题', '填空题', '证明题', '计算题', '解答题']
 const choiceQuestionTypes = ['单选题', '多选题']
@@ -280,6 +320,7 @@ const previewOptionGridColumns = computed(() => getOptionGridColumns(96))
 
 onMounted(async () => {
   await ensureLibrary()
+  await loadKnowledgePoints()
   await loadQuestion()
 })
 
@@ -312,16 +353,17 @@ function createEmptyQuestion(): QuestionPayload {
     createdBy: 'yaoyao',
     options: createDefaultOptions(),
     tags: [],
-    knowledgePoints: []
+    knowledgePoints: [],
+    knowledgePointIds: []
   }
 }
 
 function createDefaultOptions() {
   return [
-    { optionKey: 'A', content: '', sortOrder: 1 },
-    { optionKey: 'B', content: '', sortOrder: 2 },
-    { optionKey: 'C', content: '', sortOrder: 3 },
-    { optionKey: 'D', content: '', sortOrder: 4 }
+    { optionKey: 'A', content: '', imageText: '', sortOrder: 1 },
+    { optionKey: 'B', content: '', imageText: '', sortOrder: 2 },
+    { optionKey: 'C', content: '', imageText: '', sortOrder: 3 },
+    { optionKey: 'D', content: '', imageText: '', sortOrder: 4 }
   ]
 }
 
@@ -358,6 +400,10 @@ async function loadQuestion() {
   const id = getRouteQuestionId()
   if (id) {
     Object.assign(questionForm, await getQuestion(id))
+    questionForm.knowledgePointIds = resolveKnowledgePointIds(
+      questionForm.knowledgePointIds || [],
+      questionForm.knowledgePoints || []
+    )
     selectedCategoryId.value = questionForm.categoryId
   } else {
     const categoryId = Number(route.query.categoryId) || undefined
@@ -365,6 +411,8 @@ async function loadQuestion() {
     selectedCategoryId.value = categoryId
   }
   await loadQuestionImage()
+  syncKnowledgePointNames()
+  await loadOptionImages()
 }
 
 function getRouteQuestionId() {
@@ -375,6 +423,7 @@ function getRouteQuestionId() {
 function resetQuestion() {
   Object.assign(questionForm, createEmptyQuestion())
   questionImageUrl.value = ''
+  optionImageMap.value = {}
 }
 
 function selectCategory(id?: number) {
@@ -388,7 +437,25 @@ function addOption() {
   questionForm.options.push({
     optionKey,
     content: '',
+    imageText: '',
     sortOrder: nextIndex + 1
+  })
+}
+
+function removeOption(optionKey: string) {
+  if (questionForm.options.length <= 2) {
+    message.warning('至少保留两个选项')
+    return
+  }
+  questionForm.options = questionForm.options.filter((option) => option.optionKey !== optionKey)
+  reindexOptions()
+  loadOptionImages()
+}
+
+function reindexOptions() {
+  questionForm.options.forEach((option, index) => {
+    option.optionKey = String.fromCharCode(65 + index)
+    option.sortOrder = index + 1
   })
 }
 
@@ -428,7 +495,8 @@ function buildQuestionPayload(): QuestionPayload {
     ...questionForm,
     options: isChoiceQuestion.value ? questionForm.options : [],
     tags: normalizeNameList(questionForm.tags),
-    knowledgePoints: normalizeNameList(questionForm.knowledgePoints)
+    knowledgePoints: normalizeNameList(questionForm.knowledgePoints),
+    knowledgePointIds: questionForm.knowledgePointIds || []
   }
 }
 
@@ -466,6 +534,35 @@ async function addImage() {
   }
 }
 
+async function addOptionImage(option: QuestionOption) {
+  const selected = await open({
+    multiple: false,
+    filters: [
+      {
+        name: '图片',
+        extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif']
+      }
+    ]
+  })
+  const sourcePath = Array.isArray(selected) ? selected[0] : selected
+  if (!sourcePath) return
+  try {
+    const asset = await importAsset(sourcePath, questionForm.id)
+    option.imageText = asset.filePath
+    await loadOptionImages()
+    message.success('选项图片已导入资源目录')
+  } catch (error) {
+    message.error(String(error))
+  }
+}
+
+function removeOptionImage(option: QuestionOption) {
+  option.imageText = ''
+  const nextMap = { ...optionImageMap.value }
+  delete nextMap[option.optionKey]
+  optionImageMap.value = nextMap
+}
+
 async function handleBoardSave(payload: { json: string; previewDataUrl: string }) {
   try {
     await saveBoard(questionForm.id, payload.json, payload.previewDataUrl)
@@ -484,6 +581,65 @@ async function loadQuestionImage() {
   } catch {
     questionImageUrl.value = ''
   }
+}
+
+async function loadOptionImages() {
+  const imageMap: Record<string, string> = {}
+  await Promise.all(
+    questionForm.options.map(async (option) => {
+      if (!option.imageText || !option.imageText.startsWith('assets/')) return
+      try {
+        const asset = await readAssetDataUrl(option.imageText)
+        imageMap[option.optionKey] = asset.dataUrl
+      } catch {
+        imageMap[option.optionKey] = ''
+      }
+    })
+  )
+  optionImageMap.value = imageMap
+}
+
+async function loadKnowledgePoints() {
+  knowledgePoints.value = await listKnowledgePoints()
+  knowledgeNameMap.value = new Map(knowledgePoints.value.map((item) => [item.id, item.name]))
+  knowledgeIdMap.value = new Map(knowledgePoints.value.map((item) => [item.name, item.id]))
+  knowledgeTreeOptions.value = buildKnowledgeTree(knowledgePoints.value)
+  knowledgeRootKeys.value = knowledgePoints.value.filter((item) => !item.parentId).map((item) => item.id)
+  knowledgeExpandedKeys.value = [...knowledgeRootKeys.value]
+  questionForm.knowledgePointIds = resolveKnowledgePointIds(
+    questionForm.knowledgePointIds || [],
+    questionForm.knowledgePoints || []
+  )
+  syncKnowledgePointNames()
+}
+
+function buildKnowledgeTree(items: KnowledgePoint[]) {
+  const nodeMap = new Map<number, KnowledgeTreeOption>()
+  items.forEach((item) => nodeMap.set(item.id, { title: item.name, value: item.id, children: [] }))
+  const roots: KnowledgeTreeOption[] = []
+  items.forEach((item) => {
+    const node = nodeMap.get(item.id)
+    if (!node) return
+    if (item.parentId && nodeMap.has(item.parentId)) {
+      nodeMap.get(item.parentId)?.children.push(node)
+    } else {
+      roots.push(node)
+    }
+  })
+  return roots
+}
+
+function syncKnowledgePointNames() {
+  questionForm.knowledgePoints = (questionForm.knowledgePointIds || [])
+    .map((id) => knowledgeNameMap.value.get(id))
+    .filter(Boolean) as string[]
+}
+
+function resolveKnowledgePointIds(ids: number[], names: string[]) {
+  if (ids.length) return ids
+  return normalizeNameList(names)
+    .map((name) => knowledgeIdMap.value.get(name))
+    .filter(Boolean) as number[]
 }
 </script>
 
@@ -676,12 +832,14 @@ async function loadQuestionImage() {
   justify-content: space-between;
 }
 
-.full-width-tag-select {
+.full-width-tag-select,
+.full-width-tree-select {
   display: block;
   width: 100%;
 }
 
-.full-width-tag-select :deep(.ant-select-selector) {
+.full-width-tag-select :deep(.ant-select-selector),
+.full-width-tree-select :deep(.ant-select-selector) {
   width: 100%;
 }
 
@@ -719,6 +877,35 @@ async function loadQuestionImage() {
   color: #ffffff;
   background: #3aa4ff;
   border-color: #3aa4ff;
+}
+
+.option-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.option-image-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+}
+
+.option-image-row img,
+.preview-option-image {
+  display: block;
+  max-width: 100%;
+  max-height: 120px;
+  object-fit: contain;
+  border: 1px solid #e2e9f0;
+  border-radius: 6px;
+}
+
+.option-image-row img {
+  max-width: 180px;
 }
 
 .entry-image-preview {
@@ -805,6 +992,14 @@ async function loadQuestionImage() {
   color: #263447;
   font-size: 15px;
   line-height: 1.7;
+}
+
+.preview-option-item > span {
+  min-width: 0;
+}
+
+.preview-option-image {
+  margin-top: 8px;
 }
 
 .preview-option-item strong {

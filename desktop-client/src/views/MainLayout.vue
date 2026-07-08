@@ -12,6 +12,10 @@
           <a-menu-item key="/app/questions/query">题库查询</a-menu-item>
           <a-menu-item key="/app/questions/papers">试卷维护</a-menu-item>
         </a-sub-menu>
+        <a-sub-menu key="basic">
+          <template #title>基础管理</template>
+          <a-menu-item key="/app/basic/knowledge-points">知识点维护</a-menu-item>
+        </a-sub-menu>
         <a-menu-item key="/app/teachers">教师管理</a-menu-item>
         <a-menu-item key="/app/students">学员管理</a-menu-item>
         <a-menu-item key="/app/settings">系统设置</a-menu-item>
@@ -62,6 +66,7 @@ const routeTitle = computed(() => {
   if (route.path.includes('/questions/query')) return '题库查询'
   if (route.path.includes('/questions/papers')) return '试卷维护'
   if (route.path.includes('/questions/paper-assemble')) return '组装试卷'
+  if (route.path.includes('/basic/knowledge-points')) return '知识点维护'
   if (route.path.includes('teachers')) return '教师管理'
   if (route.path.includes('students')) return '学员管理'
   if (route.path.includes('settings')) return '系统设置'
@@ -72,6 +77,9 @@ watchEffect(() => {
   selectedKeys.value = [route.path]
   if (route.path.includes('/questions')) {
     openKeys.value = Array.from(new Set([...openKeys.value, 'questions']))
+  }
+  if (route.path.includes('/basic')) {
+    openKeys.value = Array.from(new Set([...openKeys.value, 'basic']))
   }
 })
 

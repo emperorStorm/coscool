@@ -39,7 +39,15 @@
               <div v-if="question.options.length && isChoiceQuestion(question.questionType)" class="option-grid">
                 <div v-for="option in question.options" :key="option.optionKey" class="option-item">
                   <strong>{{ option.optionKey }}.</strong>
-                  <MathText :content="option.content || '-'" />
+                  <span>
+                    <MathText :content="option.content || '-'" />
+                    <img
+                      v-if="optionImageMap[getOptionImageKey(question.id, option.optionKey)]"
+                      class="option-image"
+                      :src="optionImageMap[getOptionImageKey(question.id, option.optionKey)]"
+                      alt="选项图片"
+                    />
+                  </span>
                 </div>
               </div>
               <div class="question-edit-bar">
@@ -80,6 +88,7 @@ import { useRouter } from 'vue-router'
 import MathText from '../components/MathText.vue'
 import type { Question } from '../api/native'
 import { getQuestionsByIds, readAssetDataUrl, savePaper } from '../api/native'
+import { buildOptionImageMap, buildQuestionImageMap, getOptionImageKey } from '../utils/questionAssets'
 import {
   clearPaperCart,
   getPaperCartIds,
@@ -93,6 +102,7 @@ const saving = ref(false)
 const generateDialogOpen = ref(false)
 const questions = ref<Question[]>([])
 const questionImageMap = ref<Record<number, string>>({})
+const optionImageMap = ref<Record<string, string>>({})
 const paperForm = reactive({
   title: ''
 })
@@ -111,6 +121,7 @@ async function loadCartQuestions() {
   if (!ids.length) {
     questions.value = []
     questionImageMap.value = {}
+    optionImageMap.value = {}
     return
   }
   loading.value = true
@@ -130,19 +141,12 @@ async function loadCartQuestions() {
 }
 
 async function loadQuestionImages() {
-  const imageMap: Record<number, string> = {}
-  await Promise.all(
-    questions.value.map(async (question) => {
-      if (!question.imageText || !question.imageText.startsWith('assets/')) return
-      try {
-        const asset = await readAssetDataUrl(question.imageText)
-        imageMap[question.id] = asset.dataUrl
-      } catch {
-        imageMap[question.id] = ''
-      }
-    })
-  )
-  questionImageMap.value = imageMap
+  const [questionMap, optionMap] = await Promise.all([
+    buildQuestionImageMap(questions.value, readAssetDataUrl),
+    buildOptionImageMap(questions.value, readAssetDataUrl)
+  ])
+  questionImageMap.value = questionMap
+  optionImageMap.value = optionMap
 }
 
 function moveQuestion(index: number, step: number) {
@@ -159,12 +163,16 @@ function removeQuestion(id: number) {
   questions.value = questions.value.filter((question) => question.id !== id)
   const { [id]: _removed, ...nextImageMap } = questionImageMap.value
   questionImageMap.value = nextImageMap
+  optionImageMap.value = Object.fromEntries(
+    Object.entries(optionImageMap.value).filter(([key]) => !key.startsWith(`${id}:`))
+  )
   removeQuestionFromPaperCart(id)
 }
 
 function clearCart() {
   questions.value = []
   questionImageMap.value = {}
+  optionImageMap.value = {}
   clearPaperCart()
   message.success('试题栏已清空')
 }
@@ -199,6 +207,7 @@ async function generatePaper() {
     clearPaperCart()
     questions.value = []
     questionImageMap.value = {}
+    optionImageMap.value = {}
     message.success('试卷已生成')
     router.push('/app/questions/papers')
   } catch (error) {
@@ -374,6 +383,20 @@ function formatDifficultyText(difficulty: number) {
 
 .option-item :deep(.math-text) {
   min-width: 0;
+}
+
+.option-item > span {
+  min-width: 0;
+}
+
+.option-image {
+  display: block;
+  max-width: 100%;
+  max-height: 120px;
+  margin-top: 6px;
+  object-fit: contain;
+  border: 1px solid #e2e9f0;
+  border-radius: 6px;
 }
 
 .question-edit-bar {

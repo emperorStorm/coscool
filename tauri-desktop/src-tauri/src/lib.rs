@@ -8,6 +8,7 @@ use std::fs::{self, File};
 use std::io::{self, Read, Seek, Write};
 use std::path::Component;
 use std::path::{Path, PathBuf};
+use std::collections::{HashMap, HashSet};
 use tauri::{AppHandle, Manager};
 use uuid::Uuid;
 use zip::write::SimpleFileOptions;
@@ -67,12 +68,33 @@ struct QuestionCategory {
     updated_at: String,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(default, rename_all = "camelCase")]
+struct KnowledgePoint {
+    id: i64,
+    parent_id: Option<i64>,
+    name: String,
+    sort_order: i64,
+    created_at: String,
+    updated_at: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct KnowledgePointReorderItem {
+    id: i64,
+    parent_id: Option<i64>,
+    sort_order: i64,
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct QuestionOption {
     id: Option<i64>,
     option_key: String,
     content: String,
+    #[serde(default)]
+    image_text: String,
     sort_order: i64,
 }
 
@@ -96,6 +118,7 @@ struct Question {
     options: Vec<QuestionOption>,
     tags: Vec<String>,
     knowledge_points: Vec<String>,
+    knowledge_point_ids: Vec<i64>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -152,6 +175,8 @@ struct QuestionPayload {
     created_by: String,
     options: Vec<QuestionOption>,
     tags: Vec<String>,
+    #[serde(default)]
+    knowledge_point_ids: Vec<i64>,
     knowledge_points: Vec<String>,
 }
 
@@ -594,6 +619,7 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
             question_id INTEGER NOT NULL,
             option_key TEXT NOT NULL,
             content TEXT NOT NULL DEFAULT '',
+            image_text TEXT NOT NULL DEFAULT '',
             sort_order INTEGER NOT NULL DEFAULT 0
         );
         CREATE TABLE IF NOT EXISTS tags (
@@ -607,6 +633,10 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
         );
         CREATE TABLE IF NOT EXISTS knowledge_points (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
+            parent_id INTEGER,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT '',
+            updated_at TEXT NOT NULL DEFAULT '',
             name TEXT NOT NULL UNIQUE
         );
         CREATE TABLE IF NOT EXISTS question_knowledge_points (
@@ -651,34 +681,82 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
     )
     .map_err(|error| error.to_string())?;
     migrate_question_schema(conn)?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS idx_knowledge_points_parent ON knowledge_points(parent_id)",
+        [],
+    )
+    .map_err(|error| error.to_string())?;
     Ok(())
 }
 
 fn migrate_question_schema(conn: &Connection) -> Result<(), String> {
-    let mut stmt = conn
-        .prepare("PRAGMA table_info(questions)")
-        .map_err(|error| error.to_string())?;
-    let rows = stmt
-        .query_map([], |row| row.get::<_, String>(1))
-        .map_err(|error| error.to_string())?;
-    let columns = rows
-        .collect::<Result<Vec<_>, _>>()
-        .map_err(|error| error.to_string())?;
-    if !columns.iter().any(|item| item == "question_type") {
+    let question_columns = table_columns(conn, "questions")?;
+    if !question_columns.iter().any(|item| item == "question_type") {
         conn.execute(
             "ALTER TABLE questions ADD COLUMN question_type TEXT NOT NULL DEFAULT ''",
             [],
         )
         .map_err(|error| error.to_string())?;
     }
-    if !columns.iter().any(|item| item == "difficulty") {
+    if !question_columns.iter().any(|item| item == "difficulty") {
         conn.execute(
             "ALTER TABLE questions ADD COLUMN difficulty INTEGER NOT NULL DEFAULT 0",
             [],
         )
         .map_err(|error| error.to_string())?;
     }
+    let option_columns = table_columns(conn, "question_options")?;
+    if !option_columns.iter().any(|item| item == "image_text") {
+        conn.execute(
+            "ALTER TABLE question_options ADD COLUMN image_text TEXT NOT NULL DEFAULT ''",
+            [],
+        )
+        .map_err(|error| error.to_string())?;
+    }
+    let knowledge_columns = table_columns(conn, "knowledge_points")?;
+    for (column, definition) in [
+        ("parent_id", "ALTER TABLE knowledge_points ADD COLUMN parent_id INTEGER"),
+        (
+            "sort_order",
+            "ALTER TABLE knowledge_points ADD COLUMN sort_order INTEGER NOT NULL DEFAULT 0",
+        ),
+        (
+            "created_at",
+            "ALTER TABLE knowledge_points ADD COLUMN created_at TEXT NOT NULL DEFAULT ''",
+        ),
+        (
+            "updated_at",
+            "ALTER TABLE knowledge_points ADD COLUMN updated_at TEXT NOT NULL DEFAULT ''",
+        ),
+    ] {
+        if !knowledge_columns.iter().any(|item| item == column) {
+            conn.execute(definition, [])
+                .map_err(|error| error.to_string())?;
+        }
+    }
+    let now = now_text();
+    conn.execute(
+        "UPDATE knowledge_points SET created_at = ?1 WHERE created_at = ''",
+        [&now],
+    )
+    .map_err(|error| error.to_string())?;
+    conn.execute(
+        "UPDATE knowledge_points SET updated_at = ?1 WHERE updated_at = ''",
+        [&now],
+    )
+    .map_err(|error| error.to_string())?;
     Ok(())
+}
+
+fn table_columns(conn: &Connection, table_name: &str) -> Result<Vec<String>, String> {
+    let mut stmt = conn
+        .prepare(&format!("PRAGMA table_info({table_name})"))
+        .map_err(|error| error.to_string())?;
+    let rows = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|error| error.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())
 }
 
 fn seed_default_teacher(conn: &Connection) -> Result<(), String> {
@@ -745,10 +823,21 @@ fn row_to_category(row: &rusqlite::Row<'_>) -> rusqlite::Result<QuestionCategory
     })
 }
 
+fn row_to_knowledge_point(row: &rusqlite::Row<'_>) -> rusqlite::Result<KnowledgePoint> {
+    Ok(KnowledgePoint {
+        id: row.get(0)?,
+        parent_id: row.get(1)?,
+        name: row.get(2)?,
+        sort_order: row.get(3)?,
+        created_at: row.get(4)?,
+        updated_at: row.get(5)?,
+    })
+}
+
 fn query_options(conn: &Connection, question_id: i64) -> Result<Vec<QuestionOption>, String> {
     let mut stmt = conn
         .prepare(
-            "SELECT id, option_key, content, sort_order
+            "SELECT id, option_key, content, image_text, sort_order
              FROM question_options
              WHERE question_id = ?1
              ORDER BY sort_order ASC, id ASC",
@@ -760,7 +849,8 @@ fn query_options(conn: &Connection, question_id: i64) -> Result<Vec<QuestionOpti
                 id: row.get(0)?,
                 option_key: row.get(1)?,
                 content: row.get(2)?,
-                sort_order: row.get(3)?,
+                image_text: row.get(3)?,
+                sort_order: row.get(4)?,
             })
         })
         .map_err(|error| error.to_string())?;
@@ -789,6 +879,25 @@ fn query_names(
         .map_err(|error| error.to_string())
 }
 
+fn query_link_ids(
+    conn: &Connection,
+    link_table: &str,
+    link_column: &str,
+    question_id: i64,
+) -> Result<Vec<i64>, String> {
+    let sql = format!(
+        "SELECT {link_column} FROM {link_table}
+         WHERE question_id = ?1
+         ORDER BY {link_column} ASC"
+    );
+    let mut stmt = conn.prepare(&sql).map_err(|error| error.to_string())?;
+    let rows = stmt
+        .query_map([question_id], |row| row.get(0))
+        .map_err(|error| error.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())
+}
+
 fn get_or_create_name(conn: &Connection, table: &str, name: &str) -> Result<i64, String> {
     conn.execute(
         &format!("INSERT OR IGNORE INTO {table} (name) VALUES (?1)"),
@@ -800,6 +909,24 @@ fn get_or_create_name(conn: &Connection, table: &str, name: &str) -> Result<i64,
         [name],
         |row| row.get(0),
     )
+    .map_err(|error| error.to_string())
+}
+
+fn get_or_create_knowledge_point(conn: &Connection, name: &str) -> Result<i64, String> {
+    let text = name.trim();
+    if text.is_empty() {
+        return Err("知识点名称不能为空".to_string());
+    }
+    let now = now_text();
+    conn.execute(
+        "INSERT OR IGNORE INTO knowledge_points (name, sort_order, created_at, updated_at)
+         VALUES (?1, 0, ?2, ?2)",
+        params![text, now],
+    )
+    .map_err(|error| error.to_string())?;
+    conn.query_row("SELECT id FROM knowledge_points WHERE name = ?1", [text], |row| {
+        row.get(0)
+    })
     .map_err(|error| error.to_string())
 }
 
@@ -833,6 +960,52 @@ fn save_name_links(
     Ok(())
 }
 
+fn save_knowledge_links(
+    conn: &Connection,
+    question_id: i64,
+    ids: &[i64],
+    names: &[String],
+) -> Result<(), String> {
+    conn.execute(
+        "DELETE FROM question_knowledge_points WHERE question_id = ?1",
+        [question_id],
+    )
+    .map_err(|error| error.to_string())?;
+    let mut saved_ids = Vec::new();
+    for id in ids.iter().copied().filter(|item| *item > 0) {
+        let exists: Option<i64> = conn
+            .query_row("SELECT id FROM knowledge_points WHERE id = ?1", [id], |row| {
+                row.get(0)
+            })
+            .optional()
+            .map_err(|error| error.to_string())?;
+        if exists.is_some() && !saved_ids.contains(&id) {
+            saved_ids.push(id);
+        }
+    }
+    if saved_ids.is_empty() {
+        for name in names
+            .iter()
+            .map(|item| item.trim())
+            .filter(|item| !item.is_empty())
+        {
+            let id = get_or_create_knowledge_point(conn, name)?;
+            if !saved_ids.contains(&id) {
+                saved_ids.push(id);
+            }
+        }
+    }
+    for id in saved_ids {
+        conn.execute(
+            "INSERT OR IGNORE INTO question_knowledge_points (question_id, knowledge_point_id)
+             VALUES (?1, ?2)",
+            params![question_id, id],
+        )
+        .map_err(|error| error.to_string())?;
+    }
+    Ok(())
+}
+
 fn fetch_question(conn: &Connection, id: i64) -> Result<Question, String> {
     let mut question = conn
         .query_row(
@@ -859,6 +1032,7 @@ fn fetch_question(conn: &Connection, id: i64) -> Result<Question, String> {
                     options: Vec::new(),
                     tags: Vec::new(),
                     knowledge_points: Vec::new(),
+                    knowledge_point_ids: Vec::new(),
                 })
             },
         )
@@ -872,6 +1046,8 @@ fn fetch_question(conn: &Connection, id: i64) -> Result<Question, String> {
         "knowledge_point_id",
         id,
     )?;
+    question.knowledge_point_ids =
+        query_link_ids(conn, "question_knowledge_points", "knowledge_point_id", id)?;
     Ok(question)
 }
 
@@ -1221,6 +1397,179 @@ fn fetch_category(conn: &Connection, id: i64) -> Result<QuestionCategory, String
 }
 
 #[tauri::command]
+fn knowledge_point_list(app: AppHandle) -> Result<Vec<KnowledgePoint>, String> {
+    let conn = open_library_db(&app)?;
+    let mut stmt = conn
+        .prepare("SELECT id, parent_id, name, sort_order, created_at, updated_at FROM knowledge_points ORDER BY sort_order ASC, id ASC")
+        .map_err(|error| error.to_string())?;
+    let rows = stmt
+        .query_map([], row_to_knowledge_point)
+        .map_err(|error| error.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>()
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn knowledge_point_save(
+    app: AppHandle,
+    knowledge_point: KnowledgePoint,
+) -> Result<KnowledgePoint, String> {
+    if knowledge_point.name.trim().is_empty() {
+        return Err("知识点名称不能为空".to_string());
+    }
+    let conn = open_library_db(&app)?;
+    let now = now_text();
+    if knowledge_point.id > 0 {
+        conn.execute(
+            "UPDATE knowledge_points SET parent_id = ?1, name = ?2, sort_order = ?3, updated_at = ?4 WHERE id = ?5",
+            params![
+                knowledge_point.parent_id,
+                knowledge_point.name.trim(),
+                knowledge_point.sort_order,
+                now,
+                knowledge_point.id
+            ],
+        )
+        .map_err(|error| error.to_string())?;
+        fetch_knowledge_point(&conn, knowledge_point.id)
+    } else {
+        conn.execute(
+            "INSERT INTO knowledge_points (parent_id, name, sort_order, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?4)",
+            params![
+                knowledge_point.parent_id,
+                knowledge_point.name.trim(),
+                knowledge_point.sort_order,
+                now
+            ],
+        )
+        .map_err(|error| error.to_string())?;
+        fetch_knowledge_point(&conn, conn.last_insert_rowid())
+    }
+}
+
+fn fetch_knowledge_point(conn: &Connection, id: i64) -> Result<KnowledgePoint, String> {
+    conn.query_row(
+        "SELECT id, parent_id, name, sort_order, created_at, updated_at FROM knowledge_points WHERE id = ?1",
+        [id],
+        row_to_knowledge_point,
+    )
+    .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn knowledge_point_delete(app: AppHandle, id: i64) -> Result<bool, String> {
+    let conn = open_library_db(&app)?;
+    let ids = knowledge_point_descendant_ids(&conn, id)?;
+    for item_id in ids.iter().rev() {
+        conn.execute(
+            "DELETE FROM question_knowledge_points WHERE knowledge_point_id = ?1",
+            [item_id],
+        )
+        .map_err(|error| error.to_string())?;
+        conn.execute("DELETE FROM knowledge_points WHERE id = ?1", [item_id])
+            .map_err(|error| error.to_string())?;
+    }
+    Ok(true)
+}
+
+fn knowledge_point_descendant_ids(conn: &Connection, id: i64) -> Result<Vec<i64>, String> {
+    let mut ids = vec![id];
+    let mut index = 0;
+    while index < ids.len() {
+        let parent_id = ids[index];
+        let mut stmt = conn
+            .prepare("SELECT id FROM knowledge_points WHERE parent_id = ?1 ORDER BY sort_order ASC, id ASC")
+            .map_err(|error| error.to_string())?;
+        let rows = stmt
+            .query_map([parent_id], |row| row.get::<_, i64>(0))
+            .map_err(|error| error.to_string())?;
+        for row in rows {
+            let child_id = row.map_err(|error| error.to_string())?;
+            if !ids.contains(&child_id) {
+                ids.push(child_id);
+            }
+        }
+        index += 1;
+    }
+    Ok(ids)
+}
+
+#[tauri::command]
+fn knowledge_point_reorder(
+    app: AppHandle,
+    updates: Vec<KnowledgePointReorderItem>,
+) -> Result<bool, String> {
+    if updates.is_empty() {
+        return Ok(true);
+    }
+    let mut conn = open_library_db(&app)?;
+    let tx = conn.transaction().map_err(|error| error.to_string())?;
+    let update_ids: HashSet<i64> = updates.iter().map(|item| item.id).collect();
+    let mut next_parent_map = HashMap::new();
+    for item in &updates {
+        if item.id <= 0 {
+            return Err("知识点不存在".to_string());
+        }
+        if item.parent_id == Some(item.id) {
+            return Err("知识点不能拖到自身下级".to_string());
+        }
+        let exists: i64 = tx
+            .query_row(
+                "SELECT COUNT(1) FROM knowledge_points WHERE id = ?1",
+                [item.id],
+                |row| row.get(0),
+            )
+            .map_err(|error| error.to_string())?;
+        if exists == 0 {
+            return Err("知识点不存在".to_string());
+        }
+        if let Some(parent_id) = item.parent_id {
+            let parent_exists: i64 = tx
+                .query_row(
+                    "SELECT COUNT(1) FROM knowledge_points WHERE id = ?1",
+                    [parent_id],
+                    |row| row.get(0),
+                )
+                .map_err(|error| error.to_string())?;
+            if parent_exists == 0 {
+                return Err("父级知识点不存在".to_string());
+            }
+            if !update_ids.contains(&parent_id) {
+                let descendants = knowledge_point_descendant_ids(&tx, item.id)?;
+                if descendants.contains(&parent_id) {
+                    return Err("知识点不能拖到自身下级".to_string());
+                }
+            }
+        }
+        next_parent_map.insert(item.id, item.parent_id);
+    }
+    for item in &updates {
+        let mut visited = HashSet::new();
+        let mut current_parent = item.parent_id;
+        while let Some(parent_id) = current_parent {
+            if parent_id == item.id || !visited.insert(parent_id) {
+                return Err("知识点不能拖到自身下级".to_string());
+            }
+            current_parent = next_parent_map.get(&parent_id).copied().flatten();
+            if current_parent.is_none() && !update_ids.contains(&parent_id) {
+                break;
+            }
+        }
+    }
+    let now = now_text();
+    for item in updates {
+        tx.execute(
+            "UPDATE knowledge_points SET parent_id = ?1, sort_order = ?2, updated_at = ?3 WHERE id = ?4",
+            params![item.parent_id, item.sort_order, now, item.id],
+        )
+        .map_err(|error| error.to_string())?;
+    }
+    tx.commit().map_err(|error| error.to_string())?;
+    Ok(true)
+}
+
+#[tauri::command]
 fn category_delete(app: AppHandle, id: i64) -> Result<bool, String> {
     let conn = open_library_db(&app)?;
     conn.execute(
@@ -1404,8 +1753,15 @@ fn question_save(app: AppHandle, question: QuestionPayload) -> Result<Question, 
     .map_err(|error| error.to_string())?;
     for option in question.options {
         tx.execute(
-            "INSERT INTO question_options (question_id, option_key, content, sort_order) VALUES (?1, ?2, ?3, ?4)",
-            params![question_id, option.option_key, option.content, option.sort_order],
+            "INSERT INTO question_options (question_id, option_key, content, image_text, sort_order)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                question_id,
+                option.option_key,
+                option.content,
+                option.image_text,
+                option.sort_order
+            ],
         )
         .map_err(|error| error.to_string())?;
     }
@@ -1417,12 +1773,10 @@ fn question_save(app: AppHandle, question: QuestionPayload) -> Result<Question, 
         "tag_id",
         &question.tags,
     )?;
-    save_name_links(
+    save_knowledge_links(
         &tx,
         question_id,
-        "knowledge_points",
-        "question_knowledge_points",
-        "knowledge_point_id",
+        &question.knowledge_point_ids,
         &question.knowledge_points,
     )?;
     tx.commit().map_err(|error| error.to_string())?;
@@ -1849,6 +2203,10 @@ pub fn run() {
             category_list,
             category_save,
             category_delete,
+            knowledge_point_list,
+            knowledge_point_save,
+            knowledge_point_delete,
+            knowledge_point_reorder,
             question_list,
             question_batch_get,
             question_query,

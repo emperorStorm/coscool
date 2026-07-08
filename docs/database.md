@@ -8,9 +8,10 @@
 - `students`：学员基础信息。
 - `question_categories`：题库分类树。
 - `questions`：题目主体信息，包含题型 `question_type` 和难度 `difficulty`。
-- `question_options`：题目选项。
+- `question_options`：题目选项，包含选项文本和选项图片路径 `image_text`。
 - `tags`、`question_tags`：标签与题目关系。
-- `knowledge_points`、`question_knowledge_points`：知识点与题目关系。
+- `knowledge_points`：知识点维护树，包含 `parent_id`、`sort_order`、创建时间和更新时间。
+- `question_knowledge_points`：知识点与题目关系。
 - `assets`：图片、批注板、缩略图、导出文件元信息。
 - `papers`：试卷主体信息，包含试卷名称、备注、题目数量、创建人和时间。
 - `paper_questions`：试卷与题目的顺序关系。

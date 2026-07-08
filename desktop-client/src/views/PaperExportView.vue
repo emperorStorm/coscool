@@ -46,6 +46,7 @@
           :title="paperDetail.paper.title"
           :questions="paperDetail.questions"
           :image-map="questionImageMap"
+          :option-image-map="optionImageMap"
           :show-answer="visibleFields.answer"
           :show-analysis="visibleFields.analysis"
           :show-knowledge-points="visibleFields.knowledgePoints"
@@ -148,6 +149,7 @@ import { ChevronLeft } from 'lucide-vue-next'
 import PaperPreview from '../components/PaperPreview.vue'
 import type { PaperDetail, Question } from '../api/native'
 import { getPaper, readAssetDataUrl, saveExportFile } from '../api/native'
+import { buildOptionImageMap, buildQuestionImageMap } from '../utils/questionAssets'
 
 type FieldKey = 'answer' | 'analysis' | 'knowledgePoints' | 'tags'
 
@@ -160,6 +162,7 @@ const pdfDialogOpen = ref(false)
 const exportPaperRef = ref<InstanceType<typeof PaperPreview>>()
 const paperDetail = ref<PaperDetail>()
 const questionImageMap = ref<Record<number, string>>({})
+const optionImageMap = ref<Record<string, string>>({})
 const visibleFields = reactive<Record<FieldKey, boolean>>({
   answer: false,
   analysis: false,
@@ -209,19 +212,12 @@ async function loadPaper() {
 }
 
 async function loadQuestionImages(questions: Question[]) {
-  const imageMap: Record<number, string> = {}
-  await Promise.all(
-    questions.map(async (question) => {
-      if (!question.imageText || !question.imageText.startsWith('assets/')) return
-      try {
-        const asset = await readAssetDataUrl(question.imageText)
-        imageMap[question.id] = asset.dataUrl
-      } catch {
-        imageMap[question.id] = ''
-      }
-    })
-  )
-  questionImageMap.value = imageMap
+  const [questionMap, optionMap] = await Promise.all([
+    buildQuestionImageMap(questions, readAssetDataUrl),
+    buildOptionImageMap(questions, readAssetDataUrl)
+  ])
+  questionImageMap.value = questionMap
+  optionImageMap.value = optionMap
 }
 
 function goBack() {

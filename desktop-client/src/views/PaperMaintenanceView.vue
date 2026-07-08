@@ -53,6 +53,7 @@
             :title="currentDetail.paper.title"
             :questions="currentDetail.questions"
             :image-map="questionImageMap"
+            :option-image-map="optionImageMap"
           />
         </template>
       </a-spin>
@@ -67,6 +68,7 @@ import { useRouter } from 'vue-router'
 import PaperPreview from '../components/PaperPreview.vue'
 import type { Paper, PaperDetail, Question } from '../api/native'
 import { deletePaper, getPaper, listPapers, readAssetDataUrl } from '../api/native'
+import { buildOptionImageMap, buildQuestionImageMap } from '../utils/questionAssets'
 import { setPaperCartIds } from '../utils/paperCart'
 
 const router = useRouter()
@@ -76,6 +78,7 @@ const detailOpen = ref(false)
 const papers = ref<Paper[]>([])
 const currentDetail = ref<PaperDetail>()
 const questionImageMap = ref<Record<number, string>>({})
+const optionImageMap = ref<Record<string, string>>({})
 const columns = [
   { title: '试卷名称', dataIndex: 'title', key: 'title', width: 260 },
   { title: '题目数', key: 'questionCount', width: 100 },
@@ -138,19 +141,12 @@ async function removePaper(id: number) {
 }
 
 async function loadQuestionImages(questions: Question[]) {
-  const imageMap: Record<number, string> = {}
-  await Promise.all(
-    questions.map(async (question) => {
-      if (!question.imageText || !question.imageText.startsWith('assets/')) return
-      try {
-        const asset = await readAssetDataUrl(question.imageText)
-        imageMap[question.id] = asset.dataUrl
-      } catch {
-        imageMap[question.id] = ''
-      }
-    })
-  )
-  questionImageMap.value = imageMap
+  const [questionMap, optionMap] = await Promise.all([
+    buildQuestionImageMap(questions, readAssetDataUrl),
+    buildOptionImageMap(questions, readAssetDataUrl)
+  ])
+  questionImageMap.value = questionMap
+  optionImageMap.value = optionMap
 }
 
 function goAssemble() {

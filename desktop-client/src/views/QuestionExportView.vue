@@ -60,7 +60,15 @@
             <div class="paper-options">
               <div v-for="option in question.options" :key="option.optionKey" class="paper-option">
                 <strong>{{ option.optionKey }}.</strong>
-                <MathText :content="option.content || '-'" />
+                <span>
+                  <MathText :content="option.content || '-'" />
+                  <img
+                    v-if="optionImageMap[getOptionImageKey(question.id, option.optionKey)]"
+                    class="paper-option-image"
+                    :src="optionImageMap[getOptionImageKey(question.id, option.optionKey)]"
+                    alt="选项图片"
+                  />
+                </span>
               </div>
             </div>
           </section>
@@ -189,6 +197,7 @@ import { ChevronLeft } from 'lucide-vue-next'
 import MathText from '../components/MathText.vue'
 import type { Question } from '../api/native'
 import { getQuestion, readAssetDataUrl, saveExportFile } from '../api/native'
+import { buildOptionImageMap, getOptionImageKey } from '../utils/questionAssets'
 
 type FieldKey = 'answer' | 'analysis' | 'knowledgePoints' | 'tags'
 
@@ -202,6 +211,7 @@ const pdfDialogOpen = ref(false)
 const exportPaperRef = ref<HTMLElement>()
 const question = ref<Question>()
 const questionImageUrl = ref('')
+const optionImageMap = ref<Record<string, string>>({})
 const visibleFields = reactive<Record<FieldKey, boolean>>({
   answer: false,
   analysis: false,
@@ -243,6 +253,7 @@ async function loadQuestion() {
   try {
     question.value = await getQuestion(questionId.value)
     await loadQuestionImage()
+    optionImageMap.value = await buildOptionImageMap([question.value], readAssetDataUrl)
   } catch (error) {
     message.error(String(error))
   } finally {
@@ -703,6 +714,20 @@ function formatDifficulty(difficulty: number) {
 
 .paper-option :deep(.math-text) {
   min-width: 0;
+}
+
+.paper-option > span {
+  min-width: 0;
+}
+
+.paper-option-image {
+  display: block;
+  max-width: 100%;
+  max-height: 140px;
+  margin-top: 8px;
+  object-fit: contain;
+  border: 1px solid #e2e9f0;
+  border-radius: 6px;
 }
 
 .info-section {

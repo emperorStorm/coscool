@@ -1,6 +1,6 @@
 [package]
 name = "coscool-desktop"
-version = "0.2.2"
+version = "0.2.3"
 description = "课思库桌面客户端"
 authors = ["wangjun"]
 edition = "2021"

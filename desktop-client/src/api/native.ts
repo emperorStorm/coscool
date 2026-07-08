@@ -43,10 +43,26 @@ export interface QuestionCategory {
   updatedAt: string
 }
 
+export interface KnowledgePoint {
+  id: number
+  parentId?: number
+  name: string
+  sortOrder: number
+  createdAt: string
+  updatedAt: string
+}
+
+export interface KnowledgePointReorderItem {
+  id: number
+  parentId?: number
+  sortOrder: number
+}
+
 export interface QuestionOption {
   id?: number
   optionKey: string
   content: string
+  imageText: string
   sortOrder: number
 }
 
@@ -68,6 +84,7 @@ export interface Question {
   options: QuestionOption[]
   tags: string[]
   knowledgePoints: string[]
+  knowledgePointIds: number[]
 }
 
 export interface Paper {
@@ -113,6 +130,7 @@ export interface QuestionPayload {
   options: QuestionOption[]
   tags: string[]
   knowledgePoints: string[]
+  knowledgePointIds: number[]
 }
 
 export interface AssetRecord {
@@ -242,6 +260,22 @@ export function saveCategory(category: Partial<QuestionCategory>) {
 
 export function deleteCategory(id: number) {
   return invoke<boolean>('category_delete', { id })
+}
+
+export function listKnowledgePoints() {
+  return invoke<KnowledgePoint[]>('knowledge_point_list')
+}
+
+export function saveKnowledgePoint(knowledgePoint: Partial<KnowledgePoint>) {
+  return invoke<KnowledgePoint>('knowledge_point_save', { knowledgePoint })
+}
+
+export function deleteKnowledgePoint(id: number) {
+  return invoke<boolean>('knowledge_point_delete', { id })
+}
+
+export function reorderKnowledgePoints(updates: KnowledgePointReorderItem[]) {
+  return invoke<boolean>('knowledge_point_reorder', { updates })
 }
 
 export function listQuestions(categoryId?: number, keyword?: string) {
