@@ -205,21 +205,35 @@ function formatDifficulty(difficulty: number) {
 
 .question-main {
   min-width: 0;
-  padding: 34px 44px;
+  padding: 0 44px 34px;
   overflow: auto;
 }
 
 .entry-toolbar {
   position: sticky;
   top: 0;
-  z-index: 5;
+  z-index: 20;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  max-width: 980px;
-  margin: 0 auto;
-  padding-bottom: 22px;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 1068px;
+  margin: 0 auto 12px;
+  padding: 34px 44px 22px;
   background: #edf1f4;
+}
+
+.entry-toolbar::before {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  z-index: -1;
+  width: 100vw;
+  content: "";
+  background: #edf1f4;
+  transform: translateX(-50%);
 }
 
 .entry-search {

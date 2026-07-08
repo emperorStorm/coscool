@@ -51,11 +51,12 @@ function handleTool(item: ToolItem) {
 <style scoped>
 .tool-dock {
   position: fixed;
+  right: 38px;
   bottom: 32px;
-  left: 38px;
   z-index: 40;
   width: 138px;
   height: 138px;
+  pointer-events: none;
 }
 
 .tool-dock::before {
@@ -90,6 +91,7 @@ function handleTool(item: ToolItem) {
   border-radius: 50%;
   box-shadow: 0 10px 28px rgba(4, 117, 113, 0.16);
   outline: none;
+  pointer-events: auto;
   transition:
     color 0.18s ease,
     background 0.18s ease,

@@ -41,7 +41,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watchEffect } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppNotificationCenter from '../components/AppNotificationCenter.vue'
 
@@ -73,15 +73,23 @@ const routeTitle = computed(() => {
   return '题库管理'
 })
 
-watchEffect(() => {
-  selectedKeys.value = [route.path]
-  if (route.path.includes('/questions')) {
-    openKeys.value = Array.from(new Set([...openKeys.value, 'questions']))
-  }
-  if (route.path.includes('/basic')) {
-    openKeys.value = Array.from(new Set([...openKeys.value, 'basic']))
-  }
-})
+watch(
+  () => route.path,
+  (path) => {
+    selectedKeys.value = [path]
+    const activeSubMenu = resolveActiveSubMenu(path)
+    if (activeSubMenu && !openKeys.value.includes(activeSubMenu)) {
+      openKeys.value = [...openKeys.value, activeSubMenu]
+    }
+  },
+  { immediate: true }
+)
+
+function resolveActiveSubMenu(path: string) {
+  if (path.includes('/questions')) return 'questions'
+  if (path.includes('/basic')) return 'basic'
+  return ''
+}
 
 function handleMenuClick(event: { key: string }) {
   router.push(event.key)

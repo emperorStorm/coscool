@@ -1,14 +1,5 @@
 <template>
   <div class="question-editor-page">
-    <aside class="editor-category">
-      <QuestionCategoryTree
-        ref="categoryTreeRef"
-        :selected-id="selectedCategoryId"
-        title="题库分类"
-        @select="selectCategory"
-      />
-    </aside>
-
     <main class="editor-workspace">
       <header class="editor-header">
         <div class="editor-topbar">
@@ -252,11 +243,11 @@
             <span class="preview-label">解析</span>
             <MathText :content="questionForm.analysis || '暂无解析'" />
           </div>
+
+          <FloatingToolDock />
         </aside>
       </section>
     </main>
-
-    <FloatingToolDock />
   </div>
 </template>
 
@@ -268,7 +259,6 @@ import { useRoute, useRouter } from 'vue-router'
 import BoardEditor from '../components/BoardEditor.vue'
 import FloatingToolDock from '../components/FloatingToolDock.vue'
 import MathText from '../components/MathText.vue'
-import QuestionCategoryTree from '../components/QuestionCategoryTree.vue'
 import type { KnowledgePoint, QuestionOption, QuestionPayload } from '../api/native'
 import {
   getAppSettings,
@@ -291,8 +281,6 @@ const route = useRoute()
 const router = useRouter()
 const savingQuestion = ref(false)
 const boardVisible = ref(false)
-const categoryTreeRef = ref<InstanceType<typeof QuestionCategoryTree>>()
-const selectedCategoryId = ref<number | undefined>()
 const questionImageUrl = ref('')
 const optionImageMap = ref<Record<string, string>>({})
 const knowledgePoints = ref<KnowledgePoint[]>([])
@@ -404,11 +392,9 @@ async function loadQuestion() {
       questionForm.knowledgePointIds || [],
       questionForm.knowledgePoints || []
     )
-    selectedCategoryId.value = questionForm.categoryId
   } else {
     const categoryId = Number(route.query.categoryId) || undefined
     questionForm.categoryId = categoryId
-    selectedCategoryId.value = categoryId
   }
   await loadQuestionImage()
   syncKnowledgePointNames()
@@ -424,11 +410,6 @@ function resetQuestion() {
   Object.assign(questionForm, createEmptyQuestion())
   questionImageUrl.value = ''
   optionImageMap.value = {}
-}
-
-function selectCategory(id?: number) {
-  selectedCategoryId.value = id
-  questionForm.categoryId = id
 }
 
 function addOption() {
@@ -476,7 +457,6 @@ async function submitQuestion() {
   savingQuestion.value = true
   try {
     await saveQuestion(buildQuestionPayload())
-    await categoryTreeRef.value?.load()
     message.success('题目已保存')
     await router.replace('/app/questions/entry')
   } catch (error) {
@@ -645,24 +625,15 @@ function resolveKnowledgePointIds(ids: number[], names: string[]) {
 
 <style scoped>
 .question-editor-page {
-  display: grid;
-  grid-template-columns: 300px minmax(0, 1fr);
   height: 100vh;
   overflow: hidden;
   background: #eef1f4;
 }
 
-.editor-category {
-  min-height: 0;
-  padding: 16px 12px 16px 18px;
-  overflow: hidden;
-  background: #f4f6f8;
-  border-right: 1px solid #dde4ed;
-}
-
 .editor-workspace {
   display: grid;
   grid-template-rows: 58px minmax(0, 1fr);
+  height: 100%;
   min-width: 0;
   overflow: hidden;
 }
@@ -927,7 +898,9 @@ function resolveKnowledgePointIds(ids: number[], names: string[]) {
 }
 
 .preview-pane {
+  position: relative;
   padding-left: 10px;
+  padding-bottom: 132px;
   border-left: 3px solid #d4dae2;
 }
 
@@ -1011,10 +984,6 @@ function resolveKnowledgePointIds(ids: number[], names: string[]) {
 }
 
 @media (max-width: 1280px) {
-  .question-editor-page {
-    grid-template-columns: 260px minmax(0, 1fr);
-  }
-
   .editor-content {
     grid-template-columns: 1fr;
     overflow: auto;
@@ -1027,6 +996,7 @@ function resolveKnowledgePointIds(ids: number[], names: string[]) {
 
   .preview-pane {
     padding-left: 0;
+    padding-bottom: 132px;
     border-left: 0;
   }
 
