@@ -1,0 +1,1270 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>课思库 - 系统原型预览</title>
+  <link rel="icon" href="../../assets/brand/coscool-icon.svg" type="image/svg+xml" />
+  <style>
+    :root {
+      --brand: #0f8f83;
+      --brand-dark: #08665f;
+      --brand-soft: #eefaf8;
+      --ink: #273244;
+      --muted: #8190a2;
+      --line: #dfe6ee;
+      --panel: #ffffff;
+      --page: #edf1f4;
+      --warning: #a96800;
+      --danger: #c93838;
+      --shadow: 0 18px 45px rgba(42, 56, 72, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      min-height: 100%;
+      margin: 0;
+    }
+
+    body {
+      color: var(--ink);
+      background: var(--page);
+      font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+    }
+
+    button,
+    input,
+    select,
+    textarea {
+      font: inherit;
+    }
+
+    button {
+      cursor: pointer;
+    }
+
+    .login-screen {
+      display: grid;
+      min-height: 100vh;
+      place-items: center;
+      padding: 24px;
+      background:
+        linear-gradient(120deg, rgba(15, 143, 131, 0.1), transparent 42%),
+        #eef2f4;
+    }
+
+    .login-card {
+      width: min(420px, 100%);
+      padding: 34px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .brand-row,
+    .side-logo {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .brand-mark {
+      display: block;
+      width: 54px;
+      height: 54px;
+      border-radius: 8px;
+    }
+
+    .login-card h1 {
+      margin: 20px 0 8px;
+      font-size: 30px;
+      letter-spacing: 0;
+    }
+
+    .login-card p {
+      margin: 0 0 28px;
+      color: #687789;
+    }
+
+    .form-stack {
+      display: grid;
+      gap: 14px;
+    }
+
+    .field {
+      display: grid;
+      gap: 7px;
+    }
+
+    .field label {
+      color: #526174;
+      font-size: 13px;
+      font-weight: 600;
+    }
+
+    .field input,
+    .field select,
+    .field textarea,
+    .search-input {
+      width: 100%;
+      min-height: 34px;
+      padding: 8px 11px;
+      color: var(--ink);
+      background: #ffffff;
+      border: 1px solid #d7e0ea;
+      border-radius: 8px;
+      outline: none;
+    }
+
+    .field textarea {
+      min-height: 92px;
+      resize: vertical;
+    }
+
+    .hint {
+      margin-top: 18px;
+      color: #8794a4;
+      text-align: center;
+    }
+
+    .app-shell {
+      display: none;
+      min-height: 100vh;
+    }
+
+    .side-bar {
+      width: 220px;
+      min-height: 100vh;
+      flex: 0 0 220px;
+      background: #f3f6f8;
+      border-right: 1px solid #dde5ed;
+    }
+
+    .side-logo {
+      height: 64px;
+      padding: 0 18px;
+    }
+
+    .side-logo img {
+      width: 34px;
+      height: 34px;
+      border-radius: 6px;
+    }
+
+    .side-logo strong {
+      font-size: 18px;
+    }
+
+    .menu {
+      padding: 8px 10px;
+    }
+
+    .menu-group {
+      margin: 10px 0 6px;
+      padding: 0 10px;
+      color: #687789;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .menu-button {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      min-height: 38px;
+      margin-bottom: 4px;
+      padding: 0 12px;
+      color: #445368;
+      text-align: left;
+      background: transparent;
+      border: 0;
+      border-radius: 8px;
+    }
+
+    .menu-button.active,
+    .menu-button:hover {
+      color: var(--brand);
+      background: #e7f5f3;
+    }
+
+    .menu-count {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 22px;
+      height: 22px;
+      padding: 0 7px;
+      color: #ffffff;
+      font-size: 12px;
+      background: var(--brand);
+      border-radius: 999px;
+    }
+
+    .main-shell {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      height: 58px;
+      padding: 0 18px;
+      background: #ffffff;
+      border-bottom: 1px solid #e0e7ef;
+    }
+
+    .top-title {
+      display: flex;
+      gap: 8px;
+      align-items: baseline;
+    }
+
+    .muted {
+      color: var(--muted);
+    }
+
+    .top-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .content-area {
+      height: calc(100vh - 58px);
+      padding: 18px;
+      overflow: auto;
+      background: var(--page);
+    }
+
+    .page {
+      display: none;
+    }
+
+    .page.active {
+      display: block;
+    }
+
+    .work-panel {
+      background: var(--panel);
+      border: 1px solid #e6ebf1;
+      border-radius: 8px;
+    }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+
+    .toolbar-left,
+    .toolbar-right {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .page-title {
+      margin: 0;
+      font-size: 20px;
+      font-weight: 700;
+    }
+
+    .btn {
+      min-height: 34px;
+      padding: 0 14px;
+      color: #425168;
+      background: #ffffff;
+      border: 1px solid #d7e0ea;
+      border-radius: 8px;
+    }
+
+    .btn:hover {
+      color: var(--brand);
+      border-color: #a6dcd5;
+    }
+
+    .btn.primary {
+      color: #ffffff;
+      background: var(--brand);
+      border-color: var(--brand);
+    }
+
+    .btn.danger {
+      color: var(--danger);
+      border-color: #f0caca;
+    }
+
+    .btn.text {
+      padding: 0;
+      color: var(--brand);
+      background: transparent;
+      border: 0;
+    }
+
+    .chip-list {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 0 12px;
+      color: var(--brand);
+      background: var(--brand-soft);
+      border: 1px solid #cdeee8;
+      border-radius: 999px;
+    }
+
+    .chip.gray {
+      color: #617186;
+      background: #f5f7f9;
+      border-color: #e1e7ee;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      min-height: 24px;
+      padding: 0 9px;
+      color: var(--brand-dark);
+      background: var(--brand-soft);
+      border: 1px solid #cdeee8;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .grid-2 {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(320px, 420px);
+      gap: 14px;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .question-entry {
+      display: grid;
+      grid-template-columns: 300px minmax(0, 1fr);
+      gap: 14px;
+      min-height: calc(100vh - 94px);
+    }
+
+    .category-pane,
+    .card {
+      padding: 16px;
+    }
+
+    .tree {
+      display: grid;
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .tree-item {
+      display: flex;
+      justify-content: space-between;
+      padding: 9px 10px;
+      background: #f8fafb;
+      border: 1px solid #e6ebf1;
+      border-radius: 8px;
+    }
+
+    .tree-item.active {
+      color: var(--brand);
+      background: var(--brand-soft);
+      border-color: #cdeee8;
+    }
+
+    .entry-main {
+      display: grid;
+      gap: 14px;
+      min-width: 0;
+    }
+
+    .entry-header {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px;
+    }
+
+    .entry-form {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+      padding: 16px;
+    }
+
+    .full {
+      grid-column: 1 / -1;
+    }
+
+    .option-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .preview-paper {
+      min-height: 420px;
+      padding: 24px;
+      background: #fffdf8;
+      border: 1px solid #eadfca;
+      border-radius: 8px;
+      box-shadow: 0 12px 28px rgba(87, 72, 42, 0.08);
+    }
+
+    .preview-paper h3 {
+      margin: 0 0 14px;
+      font-size: 20px;
+      text-align: center;
+    }
+
+    .paper-line {
+      height: 1px;
+      margin: 18px 0;
+      background: #eadfca;
+    }
+
+    .query-layout {
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+      gap: 14px;
+    }
+
+    .filter-stack {
+      display: grid;
+      gap: 12px;
+    }
+
+    .question-list {
+      display: grid;
+      gap: 14px;
+    }
+
+    .question-card {
+      padding: 18px;
+    }
+
+    .question-card-head {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+    }
+
+    .question-index {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      color: #ffffff;
+      background: var(--brand);
+      border-radius: 8px;
+      font-weight: 700;
+    }
+
+    .question-stem {
+      padding: 14px;
+      line-height: 1.75;
+      background: #f8fafb;
+      border: 1px solid #e6ebf1;
+      border-radius: 8px;
+    }
+
+    .answer-row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    .answer-item {
+      padding: 10px;
+      background: #ffffff;
+      border: 1px solid #e6ebf1;
+      border-radius: 8px;
+    }
+
+    .assemble-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 320px;
+      gap: 14px;
+    }
+
+    .paper-canvas {
+      padding: 28px;
+      background: #ffffff;
+      border-radius: 8px;
+    }
+
+    .paper-title-input {
+      width: 100%;
+      margin-bottom: 18px;
+      padding: 10px 12px;
+      text-align: center;
+      border: 1px solid #d7e0ea;
+      border-radius: 8px;
+      font-size: 22px;
+      font-weight: 700;
+    }
+
+    .paper-question {
+      padding: 16px 0;
+      border-top: 1px solid #edf0f4;
+    }
+
+    .paper-question:first-of-type {
+      border-top: 0;
+    }
+
+    .paper-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #ffffff;
+      border: 1px solid #e6ebf1;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+
+    .table th,
+    .table td {
+      padding: 12px;
+      text-align: left;
+      border-bottom: 1px solid #edf0f4;
+    }
+
+    .table th {
+      color: #526174;
+      background: #f8fafb;
+      font-size: 13px;
+    }
+
+    .table tr:last-child td {
+      border-bottom: 0;
+    }
+
+    .metric {
+      padding: 16px;
+      background: #ffffff;
+      border: 1px solid #e6ebf1;
+      border-radius: 8px;
+    }
+
+    .metric strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: 24px;
+    }
+
+    .library-path {
+      padding: 12px;
+      overflow-wrap: anywhere;
+      color: #526174;
+      background: #f8fafb;
+      border: 1px dashed #cad5e2;
+      border-radius: 8px;
+    }
+
+    .modal,
+    .toast {
+      position: fixed;
+      z-index: 20;
+      display: none;
+    }
+
+    .modal.active,
+    .toast.active {
+      display: flex;
+    }
+
+    .modal {
+      inset: 0;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      background: rgba(25, 35, 48, 0.45);
+    }
+
+    .modal-card {
+      width: min(520px, 100%);
+      padding: 22px;
+      background: #ffffff;
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .modal-card h3 {
+      margin: 0 0 12px;
+    }
+
+    .toast {
+      top: 18px;
+      left: 50%;
+      align-items: center;
+      min-height: 40px;
+      padding: 0 18px;
+      color: #ffffff;
+      background: rgba(39, 50, 68, 0.92);
+      border-radius: 999px;
+      transform: translateX(-50%);
+    }
+
+    .only-mobile {
+      display: none;
+    }
+
+    @media (max-width: 1080px) {
+      .app-shell {
+        flex-direction: column;
+      }
+
+      .side-bar {
+        width: 100%;
+        min-height: auto;
+        border-right: 0;
+        border-bottom: 1px solid #dde5ed;
+      }
+
+      .menu {
+        display: flex;
+        gap: 6px;
+        overflow-x: auto;
+      }
+
+      .menu-group {
+        display: none;
+      }
+
+      .menu-button {
+        width: auto;
+        white-space: nowrap;
+      }
+
+      .content-area {
+        height: auto;
+        min-height: calc(100vh - 122px);
+      }
+
+      .question-entry,
+      .query-layout,
+      .assemble-layout,
+      .grid-2,
+      .grid-3 {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .top-bar,
+      .entry-header,
+      .question-card-head {
+        align-items: flex-start;
+        flex-direction: column;
+        height: auto;
+        padding: 14px;
+      }
+
+      .entry-form,
+      .option-grid,
+      .answer-row {
+        grid-template-columns: 1fr;
+      }
+
+      .only-mobile {
+        display: inline;
+      }
+    }
+  </style>
+</head>
+<body>
+  <section id="loginScreen" class="login-screen">
+    <main class="login-card">
+      <div class="brand-row">
+        <img class="brand-mark" src="../../assets/brand/coscool-icon.svg" alt="课思库" />
+        <span class="status">系统原型预览</span>
+      </div>
+      <h1>课思库</h1>
+      <p>本地题库管理桌面客户端</p>
+      <form class="form-stack" action="javascript:void(0)">
+        <div class="field">
+          <label for="account">账号</label>
+          <input id="account" value="yaoyao" autocomplete="username" />
+        </div>
+        <div class="field">
+          <label for="password">密码</label>
+          <input id="password" type="password" value="123456" autocomplete="current-password" />
+        </div>
+        <button class="btn primary" type="button" data-login>登录</button>
+      </form>
+      <div class="hint">默认账号 yaoyao / 123456</div>
+    </main>
+  </section>
+
+  <section id="appShell" class="app-shell">
+    <aside class="side-bar">
+      <div class="side-logo">
+        <img src="../../assets/brand/coscool-icon.svg" alt="课思库" />
+        <strong>课思库</strong>
+      </div>
+      <nav class="menu" aria-label="系统导航">
+        <div class="menu-group">题库管理</div>
+        <button class="menu-button active" type="button" data-page-target="library">题库录入</button>
+        <button class="menu-button" type="button" data-page-target="query">题库查询</button>
+        <button class="menu-button" type="button" data-page-target="assemble">
+          <span>组装试卷</span>
+          <span id="cartCount" class="menu-count">2</span>
+        </button>
+        <button class="menu-button" type="button" data-page-target="papers">试卷维护</button>
+        <div class="menu-group">基础管理</div>
+        <button class="menu-button" type="button" data-page-target="knowledge">知识点维护</button>
+        <button class="menu-button" type="button" data-page-target="teachers">教师管理</button>
+        <button class="menu-button" type="button" data-page-target="students">学员管理</button>
+        <button class="menu-button" type="button" data-page-target="settings">系统设置</button>
+      </nav>
+    </aside>
+
+    <main class="main-shell">
+      <header class="top-bar">
+        <div class="top-title">
+          <strong id="routeTitle">题库录入</strong>
+          <span class="muted">本地个人版</span>
+        </div>
+        <div class="top-actions">
+          <span class="muted">姚老师</span>
+          <button class="btn" type="button" data-open-modal="libraryModal">数据仓库</button>
+          <button class="btn" type="button" data-logout>退出</button>
+        </div>
+      </header>
+
+      <div class="content-area">
+        <section id="page-library" class="page active">
+          <div class="question-entry">
+            <aside class="category-pane work-panel">
+              <div class="toolbar">
+                <h2 class="page-title">题库分类</h2>
+                <button class="btn text" type="button" data-toast="分类已新增">新增</button>
+              </div>
+              <div class="tree">
+                <div class="tree-item active"><span>初中数学</span><strong>86</strong></div>
+                <div class="tree-item"><span>函数与方程</span><strong>24</strong></div>
+                <div class="tree-item"><span>几何证明</span><strong>31</strong></div>
+                <div class="tree-item"><span>压轴题</span><strong>12</strong></div>
+              </div>
+            </aside>
+
+            <main class="entry-main">
+              <header class="entry-header work-panel">
+                <div class="toolbar-left">
+                  <select class="search-input" aria-label="年份">
+                    <option>2026</option>
+                    <option>2025</option>
+                    <option>2024</option>
+                  </select>
+                  <input class="search-input" value="第 18 题" aria-label="题号" />
+                  <button class="btn" type="button" data-toast="已模拟智能识别">智能识别</button>
+                  <button class="btn" type="button" data-open-modal="boardModal">画板</button>
+                </div>
+                <div class="toolbar-right">
+                  <button class="btn primary" type="button" data-toast="题目已保存到本地数据仓库">保存</button>
+                  <button class="btn" type="button" data-toast="已返回题库列表">返回</button>
+                </div>
+              </header>
+
+              <div class="grid-2">
+                <section class="work-panel entry-form">
+                  <div class="field">
+                    <label>题型</label>
+                    <select>
+                      <option>单选题</option>
+                      <option>多选题</option>
+                      <option>填空题</option>
+                      <option>解答题</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label>难度</label>
+                    <select>
+                      <option>★★★☆☆</option>
+                      <option>★★★★☆</option>
+                      <option>★★★★★</option>
+                    </select>
+                  </div>
+                  <div class="field full">
+                    <label>标题</label>
+                    <input value="一次函数与几何综合题" />
+                  </div>
+                  <div class="field full">
+                    <label>题目</label>
+                    <textarea>如图，在平面直角坐标系中，直线 y=kx+b 与坐标轴交于 A、B 两点，点 P 在第一象限，连接 PA、PB。求证相关线段关系并计算面积。</textarea>
+                  </div>
+                  <div class="field full">
+                    <label>选项</label>
+                    <div class="option-grid">
+                      <input value="A. 12" />
+                      <input value="B. 16" />
+                      <input value="C. 20" />
+                      <input value="D. 24" />
+                    </div>
+                  </div>
+                  <div class="field">
+                    <label>知识点</label>
+                    <input value="一次函数、三角形面积、坐标几何" />
+                  </div>
+                  <div class="field">
+                    <label>标签</label>
+                    <input value="中考、压轴、几何综合" />
+                  </div>
+                  <div class="field">
+                    <label>答案</label>
+                    <textarea>C</textarea>
+                  </div>
+                  <div class="field">
+                    <label>解析</label>
+                    <textarea>先由截距求出 A、B 坐标，再结合三角形面积公式建立方程，最后代入验证选项。</textarea>
+                  </div>
+                </section>
+
+                <aside class="preview-paper">
+                  <h3>一次函数与几何综合题</h3>
+                  <div class="chip-list">
+                    <span class="chip">单选题</span>
+                    <span class="chip">★★★☆☆</span>
+                    <span class="chip gray">2026</span>
+                  </div>
+                  <div class="paper-line"></div>
+                  <p>如图，在平面直角坐标系中，直线 y=kx+b 与坐标轴交于 A、B 两点，点 P 在第一象限。</p>
+                  <div class="answer-row">
+                    <div class="answer-item">A. 12</div>
+                    <div class="answer-item">B. 16</div>
+                    <div class="answer-item">C. 20</div>
+                    <div class="answer-item">D. 24</div>
+                  </div>
+                  <div class="paper-line"></div>
+                  <div class="chip-list">
+                    <span class="chip">一次函数</span>
+                    <span class="chip">坐标几何</span>
+                    <span class="chip">压轴</span>
+                  </div>
+                </aside>
+              </div>
+            </main>
+          </div>
+        </section>
+
+        <section id="page-query" class="page">
+          <div class="query-layout">
+            <aside class="work-panel card">
+              <h2 class="page-title">筛选条件</h2>
+              <div class="filter-stack" style="margin-top: 16px;">
+                <div class="field">
+                  <label>关键词</label>
+                  <input value="函数" />
+                </div>
+                <div class="field">
+                  <label>题型</label>
+                  <select><option>全部题型</option><option>单选题</option><option>解答题</option></select>
+                </div>
+                <div class="field">
+                  <label>知识点</label>
+                  <input value="一次函数" />
+                </div>
+                <button class="btn primary" type="button" data-toast="查询结果已刷新">查询</button>
+              </div>
+            </aside>
+            <main>
+              <div class="toolbar">
+                <div>
+                  <h2 class="page-title">题库查询</h2>
+                  <span class="muted">共 3 道演示题</span>
+                </div>
+                <button class="btn" type="button" data-page-target="library">新增题目</button>
+              </div>
+              <div class="question-list">
+                <article class="question-card work-panel">
+                  <div class="question-card-head">
+                    <div class="chip-list">
+                      <span class="question-index">1</span>
+                      <strong>一次函数与几何综合题</strong>
+                      <span class="chip gray">单选题</span>
+                      <span class="chip">★★★☆☆</span>
+                    </div>
+                    <div class="toolbar-right">
+                      <button class="btn" type="button" data-add-cart>加入试题栏</button>
+                      <button class="btn" type="button" data-toast="已进入导出预览">导出</button>
+                    </div>
+                  </div>
+                  <div class="question-stem">直线与坐标轴交于 A、B 两点，结合点 P 位置计算三角形面积。</div>
+                  <div class="chip-list" style="margin-top: 12px;">
+                    <span class="chip">一次函数</span>
+                    <span class="chip">坐标几何</span>
+                    <span class="chip gray">中考</span>
+                  </div>
+                </article>
+                <article class="question-card work-panel">
+                  <div class="question-card-head">
+                    <div class="chip-list">
+                      <span class="question-index">2</span>
+                      <strong>相似三角形证明</strong>
+                      <span class="chip gray">证明题</span>
+                      <span class="chip">★★★★☆</span>
+                    </div>
+                    <button class="btn" type="button" data-add-cart>加入试题栏</button>
+                  </div>
+                  <div class="question-stem">已知两组角相等，证明三角形相似并推导线段比例。</div>
+                </article>
+                <article class="question-card work-panel">
+                  <div class="question-card-head">
+                    <div class="chip-list">
+                      <span class="question-index">3</span>
+                      <strong>二次函数顶点问题</strong>
+                      <span class="chip gray">解答题</span>
+                      <span class="chip">★★★★☆</span>
+                    </div>
+                    <button class="btn" type="button" data-add-cart>加入试题栏</button>
+                  </div>
+                  <div class="question-stem">根据抛物线表达式求顶点坐标、对称轴和最值。</div>
+                </article>
+              </div>
+            </main>
+          </div>
+        </section>
+
+        <section id="page-assemble" class="page">
+          <div class="toolbar">
+            <div>
+              <h2 class="page-title">组装试卷</h2>
+              <span class="muted">试题栏已加入 <span data-cart-text>2</span> 道题</span>
+            </div>
+            <div class="toolbar-right">
+              <button class="btn" type="button" data-page-target="query">继续选题</button>
+              <button class="btn danger" type="button" data-clear-cart>清空</button>
+              <button class="btn primary" type="button" data-open-modal="paperModal">生成试卷</button>
+            </div>
+          </div>
+          <div class="assemble-layout">
+            <main class="paper-canvas work-panel">
+              <input class="paper-title-input" value="初三数学函数专题训练" />
+              <article class="paper-question">
+                <strong>1. 一次函数与几何综合题</strong>
+                <p>直线 y=kx+b 与坐标轴交于 A、B 两点，求三角形面积。</p>
+                <div class="answer-row">
+                  <div class="answer-item">A. 12</div>
+                  <div class="answer-item">B. 16</div>
+                  <div class="answer-item">C. 20</div>
+                  <div class="answer-item">D. 24</div>
+                </div>
+                <div class="paper-actions">
+                  <button class="btn" type="button" data-toast="题目已上移">上移</button>
+                  <button class="btn" type="button" data-toast="题目已下移">下移</button>
+                  <button class="btn danger" type="button" data-toast="题目已移除">删除</button>
+                </div>
+              </article>
+              <article class="paper-question">
+                <strong>2. 相似三角形证明</strong>
+                <p>证明三角形相似并推导对应线段比例。</p>
+                <div class="paper-actions">
+                  <button class="btn" type="button" data-toast="题目已上移">上移</button>
+                  <button class="btn" type="button" data-toast="题目已下移">下移</button>
+                  <button class="btn danger" type="button" data-toast="题目已移除">删除</button>
+                </div>
+              </article>
+            </main>
+            <aside class="work-panel card">
+              <h2 class="page-title">试卷摘要</h2>
+              <div class="grid-3" style="grid-template-columns: 1fr; margin-top: 14px;">
+                <div class="metric"><strong data-cart-text>2</strong><span class="muted">题目数量</span></div>
+                <div class="metric"><strong>32</strong><span class="muted">预计分值</span></div>
+                <div class="metric"><strong>A4</strong><span class="muted">导出规格</span></div>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <section id="page-papers" class="page">
+          <div class="toolbar">
+            <h2 class="page-title">试卷维护</h2>
+            <button class="btn primary" type="button" data-page-target="assemble">组装试卷</button>
+          </div>
+          <table class="table">
+            <thead>
+              <tr><th>试卷名称</th><th>题量</th><th>创建人</th><th>更新时间</th><th>操作</th></tr>
+            </thead>
+            <tbody>
+              <tr><td>初三数学函数专题训练</td><td>12</td><td>姚老师</td><td>2026-07-10</td><td><button class="btn text" data-toast="已进入试卷导出">导出</button></td></tr>
+              <tr><td>几何证明基础巩固</td><td>18</td><td>姚老师</td><td>2026-07-08</td><td><button class="btn text" data-toast="已进入试卷导出">导出</button></td></tr>
+              <tr><td>二次函数压轴练习</td><td>10</td><td>姚老师</td><td>2026-07-06</td><td><button class="btn text" data-toast="已进入试卷导出">导出</button></td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="page-knowledge" class="page">
+          <div class="grid-2">
+            <section class="work-panel card">
+              <div class="toolbar">
+                <h2 class="page-title">知识点维护</h2>
+                <button class="btn primary" type="button" data-toast="知识点已保存">保存</button>
+              </div>
+              <div class="tree">
+                <div class="tree-item active"><span>初中数学</span><strong>根节点</strong></div>
+                <div class="tree-item"><span>函数</span><strong>18</strong></div>
+                <div class="tree-item"><span>几何</span><strong>23</strong></div>
+                <div class="tree-item"><span>代数</span><strong>15</strong></div>
+              </div>
+            </section>
+            <section class="work-panel entry-form">
+              <div class="field full"><label>知识点名称</label><input value="一次函数" /></div>
+              <div class="field"><label>上级节点</label><input value="函数" /></div>
+              <div class="field"><label>排序</label><input value="10" /></div>
+              <div class="field full"><label>备注</label><textarea>用于归档一次函数图像、解析式、交点和综合应用题。</textarea></div>
+            </section>
+          </div>
+        </section>
+
+        <section id="page-teachers" class="page">
+          <div class="toolbar">
+            <h2 class="page-title">教师管理</h2>
+            <button class="btn primary" type="button" data-toast="教师已新增">新增教师</button>
+          </div>
+          <table class="table">
+            <thead><tr><th>账号</th><th>姓名</th><th>手机号</th><th>状态</th><th>备注</th></tr></thead>
+            <tbody>
+              <tr><td>yaoyao</td><td>姚老师</td><td>13800000000</td><td><span class="status">启用</span></td><td>默认本地账号</td></tr>
+              <tr><td>math01</td><td>数学老师</td><td>13900000000</td><td><span class="status">启用</span></td><td>题库维护</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="page-students" class="page">
+          <div class="toolbar">
+            <h2 class="page-title">学员管理</h2>
+            <button class="btn primary" type="button" data-toast="学员已新增">新增学员</button>
+          </div>
+          <table class="table">
+            <thead><tr><th>姓名</th><th>手机号</th><th>年级</th><th>学校</th><th>备注</th></tr></thead>
+            <tbody>
+              <tr><td>李同学</td><td>13600000000</td><td>初三</td><td>示例中学</td><td>函数专题</td></tr>
+              <tr><td>王同学</td><td>13700000000</td><td>初二</td><td>示例实验学校</td><td>几何基础</td></tr>
+            </tbody>
+          </table>
+        </section>
+
+        <section id="page-settings" class="page">
+          <div class="grid-2">
+            <section class="work-panel card">
+              <div class="toolbar">
+                <h2 class="page-title">系统设置</h2>
+                <button class="btn primary" type="button" data-open-modal="libraryModal">更新目录</button>
+              </div>
+              <div class="field">
+                <label>本地数据仓库</label>
+                <div class="library-path">/Users/yaoyao/Documents/CoscoolData</div>
+              </div>
+              <div class="field" style="margin-top: 14px;">
+                <label>数据库</label>
+                <div class="library-path">CoscoolData/coscool.sqlite</div>
+              </div>
+            </section>
+            <section class="work-panel card">
+              <h2 class="page-title">资源目录</h2>
+              <div class="tree">
+                <div class="tree-item"><span>assets/images</span><strong>题图</strong></div>
+                <div class="tree-item"><span>assets/boards</span><strong>画板</strong></div>
+                <div class="tree-item"><span>assets/thumbs</span><strong>缩略图</strong></div>
+                <div class="tree-item"><span>assets/exports</span><strong>导出</strong></div>
+                <div class="tree-item"><span>backups</span><strong>备份</strong></div>
+                <div class="tree-item"><span>imports</span><strong>导入</strong></div>
+              </div>
+            </section>
+          </div>
+        </section>
+      </div>
+    </main>
+  </section>
+
+  <div id="libraryModal" class="modal" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <h3>选择课思库基础数据仓库目录</h3>
+      <p class="muted">当前演示目录为本地路径，真实桌面端会通过系统文件选择器初始化 CoscoolData。</p>
+      <div class="library-path">/Users/yaoyao/Documents/CoscoolData</div>
+      <div class="toolbar" style="margin: 18px 0 0;">
+        <span></span>
+        <button class="btn primary" type="button" data-close-modal data-toast="数据仓库目录已确认">确认</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="boardModal" class="modal" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <h3>批注板</h3>
+      <div class="work-panel" style="height: 220px; padding: 18px; background: #fffdf8;">
+        <div style="height: 100%; border: 1px dashed #c9b98d; border-radius: 8px;"></div>
+      </div>
+      <div class="toolbar" style="margin: 18px 0 0;">
+        <span class="muted">画板 JSON 与预览资源保存到本地数据仓库。</span>
+        <button class="btn primary" type="button" data-close-modal data-toast="批注板已保存">保存</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="paperModal" class="modal" role="dialog" aria-modal="true">
+    <div class="modal-card">
+      <h3>生成试卷</h3>
+      <div class="form-stack">
+        <div class="field">
+          <label>试卷名称</label>
+          <input value="初三数学函数专题训练" />
+        </div>
+        <div class="field">
+          <label>备注</label>
+          <textarea>由试题栏中的演示题目生成。</textarea>
+        </div>
+        <button class="btn primary" type="button" data-close-modal data-toast="试卷已生成">生成</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast" role="status"></div>
+
+  <script>
+    const pageTitles = {
+      library: '题库录入',
+      query: '题库查询',
+      assemble: '组装试卷',
+      papers: '试卷维护',
+      knowledge: '知识点维护',
+      teachers: '教师管理',
+      students: '学员管理',
+      settings: '系统设置'
+    }
+    let cartCount = 2
+    let toastTimer = 0
+
+    function showToast(message) {
+      const toast = document.getElementById('toast')
+      toast.textContent = message
+      toast.classList.add('active')
+      clearTimeout(toastTimer)
+      toastTimer = setTimeout(() => toast.classList.remove('active'), 1800)
+    }
+
+    function syncCartCount() {
+      document.getElementById('cartCount').textContent = String(cartCount)
+      document.querySelectorAll('[data-cart-text]').forEach((item) => {
+        item.textContent = String(cartCount)
+      })
+    }
+
+    function showPage(page) {
+      document.querySelectorAll('.page').forEach((item) => item.classList.remove('active'))
+      document.getElementById(`page-${page}`).classList.add('active')
+      document.querySelectorAll('.menu-button').forEach((item) => {
+        item.classList.toggle('active', item.dataset.pageTarget === page)
+      })
+      document.getElementById('routeTitle').textContent = pageTitles[page] || '课思库'
+    }
+
+    function openModal(id) {
+      const modal = document.getElementById(id)
+      if (modal) modal.classList.add('active')
+    }
+
+    function closeModals() {
+      document.querySelectorAll('.modal').forEach((item) => item.classList.remove('active'))
+    }
+
+    document.addEventListener('click', (event) => {
+      const target = event.target.closest('button, .modal')
+      if (!target) return
+
+      if (target.matches('[data-login]')) {
+        document.getElementById('loginScreen').style.display = 'none'
+        document.getElementById('appShell').style.display = 'flex'
+        showToast('已进入课思库原型')
+        setTimeout(() => openModal('libraryModal'), 400)
+        return
+      }
+
+      if (target.matches('[data-logout]')) {
+        document.getElementById('appShell').style.display = 'none'
+        document.getElementById('loginScreen').style.display = 'grid'
+        showToast('已退出')
+        return
+      }
+
+      if (target.dataset.pageTarget) {
+        showPage(target.dataset.pageTarget)
+        return
+      }
+
+      if (target.dataset.openModal) {
+        openModal(target.dataset.openModal)
+        return
+      }
+
+      if (target.matches('[data-close-modal]')) {
+        closeModals()
+      }
+
+      if (target.matches('[data-add-cart]')) {
+        cartCount += 1
+        syncCartCount()
+        showToast('已加入试题栏')
+        return
+      }
+
+      if (target.matches('[data-clear-cart]')) {
+        cartCount = 0
+        syncCartCount()
+        showToast('试题栏已清空')
+        return
+      }
+
+      if (target.dataset.toast) {
+        showToast(target.dataset.toast)
+        return
+      }
+
+      if (target.classList.contains('modal')) {
+        closeModals()
+      }
+    })
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') closeModals()
+    })
+  </script>
+</body>
+</html>

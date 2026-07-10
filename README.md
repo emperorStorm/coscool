@@ -4,6 +4,12 @@
 
 Coscool is a local-first desktop question bank manager for the Chinese product "课思库". The first version focuses on personal offline use on Windows and macOS. It stores structured data in SQLite and keeps images, annotation boards, thumbnails, exports, backups, and imports inside a user-selected local data repository.
 
+## Prototype Preview
+
+[Open the interactive system prototype](https://emperorStorm.github.io/coscool/prototype/)
+
+The prototype is a static GitHub Pages preview for product walkthroughs. The real desktop app still runs through the local Tauri development and build commands below.
+
 ## Structure
 
 ```text
