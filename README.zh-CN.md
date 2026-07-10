@@ -4,9 +4,13 @@
 
 课思库是一个本地优先的桌面题库管理工具。首版面向个人离线使用，主要支持 Windows 与 macOS 桌面端。结构化数据使用 SQLite 存储，图片、批注板、缩略图、导出文件、备份和导入文件统一保存在用户选择的本地数据仓库目录中。
 
-## 在线原型预览
+## 项目入口
 
-[打开系统交互原型](https://emperorStorm.github.io/coscool/prototype/)
+- [系统交互原型](https://emperorStorm.github.io/coscool/prototype/)
+- [文档目录](docs/README.md)
+- [开发说明](docs/development.md)
+- [SQLite 表说明](docs/database.md)
+- [本地数据仓库规划](docs/data-library.md)
 
 该页面是用于产品走查的 GitHub Pages 静态预览。真实桌面端仍需按下面的本地启动和打包命令运行。
 
